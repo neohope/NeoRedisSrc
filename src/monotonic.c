@@ -1,3 +1,6 @@
+/*
+ * 单增时钟
+ */
 #include "monotonic.h"
 #include <stddef.h>
 #include <stdlib.h>

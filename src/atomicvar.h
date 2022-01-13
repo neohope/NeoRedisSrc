@@ -1,4 +1,6 @@
-/* This file implements atomic counters using c11 _Atomic, __atomic or __sync
+/* 
+ * 原子操作
+ * This file implements atomic counters using c11 _Atomic, __atomic or __sync
  * macros if available, otherwise we will throw an error when compile.
  *
  * The exported interface is composed of three macros:

@@ -1,3 +1,8 @@
+/* 
+ * CLI (command line interface) common methods
+ * 
+ */
+
 #ifndef __CLICOMMON_H
 #define __CLICOMMON_H
 

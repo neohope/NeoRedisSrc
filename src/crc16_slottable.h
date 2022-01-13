@@ -1,3 +1,7 @@
+/*
+ * CRC16
+ */
+
 #ifndef _CRC16_TABLE_H__
 #define _CRC16_TABLE_H__
 

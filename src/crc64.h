@@ -1,3 +1,7 @@
+/*
+ * CRC64
+ */
+
 #ifndef CRC64_H
 #define CRC64_H
 

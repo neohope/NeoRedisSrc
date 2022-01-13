@@ -1,3 +1,7 @@
+/*
+ * 内存回收
+ */
+
 #include "server.h"
 #include "bio.h"
 #include "atomicvar.h"

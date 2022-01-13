@@ -1,3 +1,7 @@
+/*
+ * module定义
+ */
+
 #ifndef REDISMODULE_H
 #define REDISMODULE_H
 

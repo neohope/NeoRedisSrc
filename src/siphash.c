@@ -1,4 +1,6 @@
 /*
+   SipHash
+   
    SipHash reference C implementation
 
    Copyright (c) 2012-2016 Jean-Philippe Aumasson

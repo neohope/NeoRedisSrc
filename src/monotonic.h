@@ -1,3 +1,6 @@
+/*
+ * 单增时钟
+ */
 #ifndef __MONOTONIC_H
 #define __MONOTONIC_H
 /* The monotonic clock is an always increasing clock source.  It is unrelated to
