@@ -2483,6 +2483,7 @@ char *RM_StringDMA(RedisModuleKey *key, size_t *len, int mode) {
     return key->value->ptr;
 }
 
+// redis限制了字符串最大长度为512M
 /* If the string is open for writing and is of string type, resize it, padding
  * with zero bytes if the new length is greater than the old one.
  *

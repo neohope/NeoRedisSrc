@@ -15,6 +15,7 @@
 
 const char *SDS_NOINIT = "SDS_NOINIT";
 
+// sds头长度
 static inline int sdsHdrSize(char type) {
     switch(type&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
@@ -31,6 +32,7 @@ static inline int sdsHdrSize(char type) {
     return 0;
 }
 
+// 通过string长度，判断sds头类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 1<<5)
         return SDS_TYPE_5;
@@ -47,6 +49,7 @@ static inline char sdsReqType(size_t string_size) {
 #endif
 }
 
+// 通过sds头类型，判断最大char长度
 static inline size_t sdsTypeMaxSize(char type) {
     if (type == SDS_TYPE_5)
         return (1<<5) - 1;
@@ -61,6 +64,7 @@ static inline size_t sdsTypeMaxSize(char type) {
     return -1; /* this is equivalent to the max SDS_TYPE_64 or SDS_TYPE_32 */
 }
 
+// 创建一个新的sds
 /* Create a new sds string with the content specified by the 'init' pointer
  * and 'initlen'.
  * If NULL is used for 'init' the string is initialized with zero bytes.
@@ -139,6 +143,7 @@ sds _sdsnewlen(const void *init, size_t initlen, int trymalloc) {
     return s;
 }
 
+// 创建一个新的sds
 sds sdsnewlen(const void *init, size_t initlen) {
     return _sdsnewlen(init, initlen, 0);
 }
@@ -159,11 +164,13 @@ sds sdsnew(const char *init) {
     return sdsnewlen(init, initlen);
 }
 
+// 拷贝sds
 /* Duplicate an sds string. */
 sds sdsdup(const sds s) {
     return sdsnewlen(s, sdslen(s));
 }
 
+// 释放sds
 /* Free an sds string. No operation is performed if 's' is NULL. */
 void sdsfree(sds s) {
     if (s == NULL) return;
@@ -198,6 +205,14 @@ void sdsclear(sds s) {
     s[0] = '\0';
 }
 
+/*
+ * 保证sds有充足空间进行后续操作
+ * 以拼接字符串a+b为例
+ * 1.如果当前a的剩余空间，可以放下b中字符，则返回
+ * 2.如果放不下b中字符有两种情况
+ * 3.如果sds的头不用升级，则直接内存找一个足够大的位置，并迁移sds
+ * 4.如果sds的头需要升级，则需要申请新的sds，并拷贝数据
+ */
 /* Enlarge the free space at the end of the sds string so that the caller
  * is sure that after calling this function can overwrite up to addlen
  * bytes after the end of the string, plus one more byte for nul term.
@@ -298,6 +313,7 @@ sds sdsRemoveFreeSpace(sds s) {
     return s;
 }
 
+// sds结构体实际占用内存大小
 /* Return the total size of the allocation of the specified sds string,
  * including:
  * 1) The sds header before the pointer.
@@ -398,6 +414,7 @@ sds sdsgrowzero(sds s, size_t len) {
     return s;
 }
 
+//字符串拼接
 /* Append the specified binary-safe string pointed by 't' of 'len' bytes to the
  * end of the specified sds string 's'.
  *
@@ -430,6 +447,7 @@ sds sdscatsds(sds s, const sds t) {
     return sdscatlen(s, t, sdslen(t));
 }
 
+// 字符串拷贝
 /* Destructively modify the sds string 's' to hold the specified binary
  * safe string pointed by 't' of length 'len' bytes. */
 sds sdscpylen(sds s, const char *t, size_t len) {
@@ -527,6 +545,7 @@ sds sdsfromlonglong(long long value) {
     return sdsnewlen(buf,len);
 }
 
+// sds的springf
 /* Like sdscatprintf() but gets va_list instead of being variadic. */
 sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
     va_list cpy;
