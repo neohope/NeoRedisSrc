@@ -1,4 +1,5 @@
-/* String
+/*
+ * 简单动态字符串
  * SDSLib 2.0 -- A C dynamic strings library
  *
  */

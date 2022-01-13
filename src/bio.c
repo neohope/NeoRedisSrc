@@ -1,7 +1,6 @@
 /* 
-后台IO线程
+ * 后台IO线程
  */
-
 
 #include "server.h"
 #include "bio.h"
@@ -35,6 +34,7 @@ void *bioProcessBackgroundJobs(void *arg);
  * main thread. */
 #define REDIS_THREAD_STACK_SIZE (1024*1024*4)
 
+// 开启后台处理线程
 /* Initialize the background system, spawning the thread. */
 void bioInit(void) {
     pthread_attr_t attr;
@@ -71,6 +71,7 @@ void bioInit(void) {
     }
 }
 
+// 提交一个异步Job
 void bioSubmitJob(int type, struct bio_job *job) {
     job->time = time(NULL);
     pthread_mutex_lock(&bio_mutex[type]);
@@ -80,6 +81,7 @@ void bioSubmitJob(int type, struct bio_job *job) {
     pthread_mutex_unlock(&bio_mutex[type]);
 }
 
+// 发布一个LazyFreeJob
 void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...) {
     va_list valist;
     /* Allocate memory for the job structure and all required
@@ -95,6 +97,7 @@ void bioCreateLazyFreeJob(lazy_free_fn free_fn, int arg_count, ...) {
     bioSubmitJob(BIO_LAZY_FREE, job);
 }
 
+// 发布一个fd关闭Job
 void bioCreateCloseJob(int fd) {
     struct bio_job *job = zmalloc(sizeof(*job));
     job->fd = fd;
@@ -102,6 +105,7 @@ void bioCreateCloseJob(int fd) {
     bioSubmitJob(BIO_CLOSE_FILE, job);
 }
 
+// 发布一个AOF的fsync的Job
 void bioCreateFsyncJob(int fd) {
     struct bio_job *job = zmalloc(sizeof(*job));
     job->fd = fd;
@@ -109,6 +113,7 @@ void bioCreateFsyncJob(int fd) {
     bioSubmitJob(BIO_AOF_FSYNC, job);
 }
 
+// 后台线程处理函数，根据不同线程类型处理对应的Job
 void *bioProcessBackgroundJobs(void *arg) {
     struct bio_job *job;
     unsigned long type = (unsigned long) arg;
