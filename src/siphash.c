@@ -1,5 +1,5 @@
 /*
-   SipHash
+   SipHash算法实现
    
    SipHash reference C implementation
 

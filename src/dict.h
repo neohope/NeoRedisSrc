@@ -1,5 +1,5 @@
 /* 
- * Hash
+ * Hash表
  *
  * Hash Tables Implementation.
  *
@@ -24,6 +24,7 @@
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
 
+// 一个KV Entry
 typedef struct dictEntry {
     void *key;
     union {

@@ -42,12 +42,7 @@ source files
 - CLI（cli-common.c、reids-cli.c、help.h、setproctitle.c）
 - 事件驱动（ae.c、ae_epoll.c、ae_kqueue.c、ae_evport.c、ae_select.c、networking.c）
 - 事务（multi.c）
-- IO（syncio.c、rio.c）
-- 后台IO线程（bio.c）
-- 阻塞操作（blocked.c）
-- DB API（db.c）
 - 时钟管理（monotonic.c、localtime.c）
-- 传输管理（anet.c、networking.c、connection.c、connhelpers.h、gopher.c、tls.c、timeout.c）
 - 权限管理（acl.c）
 - 配置管理（config.c）
 - 模块管理（module.c）
@@ -62,7 +57,14 @@ source files
 - 原子操作（atomicvar.h）
 - CPU绑定（setcpuaffinity.c）
 
-高可用&集群：
+IO与网络：
+- IO（syncio.c、rio.c）
+- 后台IO线程（bio.c）
+- DB API（db.c）
+- 阻塞操作（blocked.c）
+- 传输管理（anet.c、networking.c、connection.c、connhelpers.h、gopher.c、tls.c、timeout.c）
+
+高可用与集群：
 - 内存快照RDB（rdb.c、redis-check-rdb.c)
 - AOF日志（aof.c、redis-check-aof.c）
 - 主从复制（replication.c）
@@ -76,4 +78,3 @@ source files
 - 通知（notify.c）
 - 基准性能（redis-benchmark.c）
 - 调试工具（memtest.c、testhelper.c、redisassert.h、debug.c、debugmacro.h）
-

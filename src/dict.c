@@ -1,5 +1,5 @@
 /* 
- * Hash
+ * Hash表
  *
  * Hash Tables Implementation.
  *
@@ -959,6 +959,8 @@ static int dictTypeExpandAllowed(dict *d) {
                     (double)d->ht[0].used / d->ht[0].size);
 }
 
+// 判断是否需要扩展Hash表
+// 
 /* Expand the hash table if needed */
 static int _dictExpandIfNeeded(dict *d)
 {
