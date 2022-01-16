@@ -1,5 +1,7 @@
 /* 
  * Hash表
+ * Hash冲突解决方案：链式哈希
+ * reHash方案：渐进式reHash，降低对主线程的阻塞
  *
  * Hash Tables Implementation.
  *
@@ -26,16 +28,18 @@
 
 // 一个KV Entry
 typedef struct dictEntry {
-    void *key;
-    union {
-        void *val;
-        uint64_t u64;
+    void *key;                    //key
+    union {                       //value
+        void *val;                //数据指针
+        uint64_t u64;             //当数据为uint64、int64、double时，直接存储数据，节约指针空间
         int64_t s64;
         double d;
     } v;
-    struct dictEntry *next;
+    struct dictEntry *next;       //链式结构的下一项
 } dictEntry;
 
+// 字典类型
+// hash函数，KV dup函数，key比较函数，KV destructor函数，是否允许扩容
 typedef struct dictType {
     uint64_t (*hashFunction)(const void *key);
     void *(*keyDup)(void *privdata, const void *key);
@@ -46,23 +50,26 @@ typedef struct dictType {
     int (*expandAllowed)(size_t moreMem, double usedRatio);
 } dictType;
 
+// 哈希表的实际结构
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
 typedef struct dictht {
-    dictEntry **table;
-    unsigned long size;
-    unsigned long sizemask;
-    unsigned long used;
+    dictEntry **table;          //二维指针，每个指针是一个slot，指向一个dictEntry *队列
+    unsigned long size;         //大小
+    unsigned long sizemask;     //
+    unsigned long used;         //实际使用
 } dictht;
 
+// redis实际使用的结构
 typedef struct dict {
-    dictType *type;
-    void *privdata;
-    dictht ht[2];
-    long rehashidx; /* rehashing not in progress if rehashidx == -1 */
-    int16_t pauserehash; /* If >0 rehashing is paused (<0 indicates coding error) */
+    dictType *type;         //字典类型
+    void *privdata;         //dup时用到的扩展数据
+    dictht ht[2];           //这里的两个dictht，实现了渐进式hash
+    long rehashidx;         //dict结构是否在进行rehash的标识，-1表示没有进行rehash
+    int16_t pauserehash;    //rehash是否暂停表示，<0出错了，=0没有停止，>0暂停了
 } dict;
 
+// 迭代器
 /* If safe is set to 1 this is a safe iterator, that means, you can call
  * dictAdd, dictFind, and other functions against the dictionary even while
  * iterating. Otherwise it is a non safe iterator, and only dictNext()

@@ -1,5 +1,7 @@
 /* 
  * Hash表
+ * Hash冲突解决方案：链式哈希
+ * reHash方案：渐进式reHash，降低对主线程的阻塞
  *
  * Hash Tables Implementation.
  *
@@ -103,6 +105,7 @@ int _dictInit(dict *d, dictType *type,
     return DICT_OK;
 }
 
+// 缩容
 /* Resize the table to the minimal size that contains all the elements,
  * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
 int dictResize(dict *d)
@@ -116,6 +119,8 @@ int dictResize(dict *d)
     return dictExpand(d, minimal);
 }
 
+// 扩容到指定大小，并开始渐进式rehash
+// 后续新增、更新、删除、查找操作时，都会进行渐进式rehash，直到扩容结束
 /* Expand or create the hash table,
  * when malloc_failed is non-NULL, it'll avoid panic if malloc fails (in which case it'll be set to 1).
  * Returns DICT_OK if expand was performed, and DICT_ERR if skipped. */
@@ -176,6 +181,7 @@ int dictTryExpand(dict *d, unsigned long size) {
     return malloc_failed? DICT_ERR : DICT_OK;
 }
 
+// 渐进式rehash函数，每次最多迁移n个slot
 /* Performs N steps of incremental rehashing. Returns 1 if there are still
  * keys to move from the old to the new hash table, otherwise 0 is returned.
  *
@@ -189,9 +195,12 @@ int dictRehash(dict *d, int n) {
     int empty_visits = n*10; /* Max number of empty buckets to visit. */
     if (!dictIsRehashing(d)) return 0;
 
+    //最多迁移n个slot
     while(n-- && d->ht[0].used != 0) {
         dictEntry *de, *nextde;
 
+        //根据rehashidx跳过已经迁移的数据，然后跳过无数据的slot
+        //为了避免主进程卡顿，最多会检查empty_visits个空slot
         /* Note that rehashidx can't overflow as we are sure there are more
          * elements because ht[0].used != 0 */
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
@@ -199,6 +208,8 @@ int dictRehash(dict *d, int n) {
             d->rehashidx++;
             if (--empty_visits == 0) return 1;
         }
+
+        //搬运1个slot的数据
         de = d->ht[0].table[d->rehashidx];
         /* Move all the keys in this bucket from the old to the new hash HT */
         while(de) {
@@ -213,10 +224,18 @@ int dictRehash(dict *d, int n) {
             d->ht[1].used++;
             de = nextde;
         }
+
+        //这个slot搬运完毕
         d->ht[0].table[d->rehashidx] = NULL;
+
+        //记录进度rehashidx
         d->rehashidx++;
     }
 
+    // 如果ht[0]已经迁移完毕，释放ht[0]
+    // 将ht[0]指向ht[1]
+    // ht[1]大小设为0
+    // rehash结束，rehashidx = -1
     /* Check if we already rehashed the whole table... */
     if (d->ht[0].used == 0) {
         zfree(d->ht[0].table);
@@ -237,6 +256,8 @@ long long timeInMilliseconds(void) {
     return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
 }
 
+// 对于全局哈希表中的数据，在系统空闲时，会用定时任务，渐进式hash
+// 每间隔 100ms 执行一次迁移操作，最多迁移100slot，一旦耗时超时超过1ms就结束本次任务
 /* Rehash in ms+"delta" milliseconds. The value of "delta" is larger 
  * than 0, and is smaller than 1 in most cases. The exact upper bound 
  * depends on the running time of dictRehash(d,100).*/
@@ -265,6 +286,7 @@ static void _dictRehashStep(dict *d) {
     if (d->pauserehash == 0) dictRehash(d,1);
 }
 
+// 增加一个KV
 /* Add an element to the target hash table */
 int dictAdd(dict *d, void *key, void *val)
 {
@@ -275,6 +297,9 @@ int dictAdd(dict *d, void *key, void *val)
     return DICT_OK;
 }
 
+// key不存在，新增key，并返回
+// key存在，返回null，并在existing参数中返回key
+// 如果正在rehash，会调用_dictRehashStep处理部分数据
 /* Low level add or find:
  * This function adds the entry but instead of setting a value returns the
  * dictEntry structure to the user, that will make sure to fill the value
@@ -321,6 +346,7 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
     return entry;
 }
 
+// key不存在新增，存在更新
 /* Add or Overwrite:
  * Add an element, discarding the old value if the key already exists.
  * Return 1 if the key was added from scratch, 0 if there was already an
@@ -349,6 +375,8 @@ int dictReplace(dict *d, void *key, void *val)
     return 0;
 }
 
+// key不存在，新增key，并返回
+// key存在，返回key
 /* Add or Find:
  * dictAddOrFind() is simply a version of dictAddRaw() that always
  * returns the hash entry of the specified key, even if the key already
@@ -362,6 +390,7 @@ dictEntry *dictAddOrFind(dict *d, void *key) {
     return entry ? entry : existing;
 }
 
+// 删除key
 /* Search and remove an element. This is an helper function for
  * dictDelete() and dictUnlink(), please check the top comment
  * of those functions. */
@@ -477,6 +506,7 @@ void dictRelease(dict *d)
     zfree(d);
 }
 
+//key查找dictEntry
 dictEntry *dictFind(dict *d, const void *key)
 {
     dictEntry *he;
@@ -498,6 +528,7 @@ dictEntry *dictFind(dict *d, const void *key)
     return NULL;
 }
 
+//key查找v
 void *dictFetchValue(dict *d, const void *key) {
     dictEntry *he;
 
@@ -543,6 +574,7 @@ long long dictFingerprint(dict *d) {
     return hash;
 }
 
+// 迭代器操作
 dictIterator *dictGetIterator(dict *d)
 {
     dictIterator *iter = zmalloc(sizeof(*iter));
@@ -609,6 +641,7 @@ void dictReleaseIterator(dictIterator *iter)
     zfree(iter);
 }
 
+// 随机key
 /* Return a random entry from the hash table. Useful to
  * implement randomized algorithms */
 dictEntry *dictGetRandomKey(dict *d)
@@ -650,6 +683,7 @@ dictEntry *dictGetRandomKey(dict *d)
     return he;
 }
 
+// 随机keys
 /* This function samples the dictionary to return a few keys from random
  * locations.
  *
@@ -959,14 +993,20 @@ static int dictTypeExpandAllowed(dict *d) {
                     (double)d->ht[0].used / d->ht[0].size);
 }
 
-// 判断是否需要扩展Hash表
-// 
+// 根据负载因子（load factor），判断是否需要rehash
+// 1、当ht[0].used >= ht[0].size && dict_can_resize为1【也就是没有在做RBD或AOF操作】
+// 或者
+// 2、当ht[0].used/ht[0].size > dict_force_resize_ratio【默认为5】，负载因子太高了强制扩容
+//
+// 扩容会将容量变成当前的两倍
+// 跟一下就知道，实际会扩容到 DICT_HT_INITIAL_SIZE*(2^n) > (ht[0].used + 1)*2 为止
 /* Expand the hash table if needed */
 static int _dictExpandIfNeeded(dict *d)
 {
     /* Incremental rehashing already in progress. Return. */
     if (dictIsRehashing(d)) return DICT_OK;
 
+    //初始化时，需要扩容
     /* If the hash table is empty expand it to the initial size. */
     if (d->ht[0].size == 0) return dictExpand(d, DICT_HT_INITIAL_SIZE);
 
@@ -997,6 +1037,9 @@ static unsigned long _dictNextPower(unsigned long size)
     }
 }
 
+// 输入一个key以及其hash
+// 如果key不存在返回一个新的dictEntry
+// 如果key存在，返回-1，并在existing返回整个dictEntry
 /* Returns the index of a free slot that can be populated with
  * a hash entry for the given 'key'.
  * If the key already exists, -1 is returned
@@ -1029,6 +1072,7 @@ static long _dictKeyIndex(dict *d, const void *key, uint64_t hash, dictEntry **e
     return idx;
 }
 
+// 内存清理
 void dictEmpty(dict *d, void(callback)(void*)) {
     _dictClear(d,&d->ht[0],callback);
     _dictClear(d,&d->ht[1],callback);

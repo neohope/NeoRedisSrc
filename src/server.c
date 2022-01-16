@@ -1334,6 +1334,8 @@ int dictExpandAllowed(size_t moreMem, double usedRatio) {
     }
 }
 
+// 全局hash配置，一共16种dictType
+// hash函数最终用了siphash
 /* Generic hash table type where keys are Redis Objects, Values
  * dummy pointers. */
 dictType objectKeyPointerValueDictType = {
@@ -1528,6 +1530,7 @@ int htNeedsResize(dict *dict) {
             (used*100/size < HASHTABLE_MIN_FILL));
 }
 
+// 全局dict，会根据情况进行缩容
 /* If the percentage of used slots in the HT reaches HASHTABLE_MIN_FILL
  * we resize the hash table to save memory */
 void tryResizeHashTables(int dbid) {
@@ -1558,6 +1561,7 @@ int incrementallyRehash(int dbid) {
     return 0;
 }
 
+// 当前没有RDB子进程，并且也没有AOF子进程，dictEnableResize()
 /* This function is called once a background process of some kind terminates,
  * as we want to avoid resizing the hash tables when there is a child in order
  * to play well with copy-on-write (otherwise when a resize happens lots of
@@ -3206,6 +3210,7 @@ void initServer(void) {
         exit(1);
     }
 
+    // 创建全局db
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);

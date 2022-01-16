@@ -1,5 +1,8 @@
 /*
-   SipHash算法实现
+   SipHash 算法实现
+   4.0 SipHash 哈希算法
+   3.0 MurmurHash2 哈希算法
+   2.0 DJBX33A 哈希算法
    
    SipHash reference C implementation
 
