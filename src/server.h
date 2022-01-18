@@ -972,23 +972,29 @@ struct sharedObjectsStruct {
     sds minstring, maxstring;
 };
 
+// 跳表节点
+// 在查找时，累加跨度span，可以得到某节点的Rank
 /* ZSETs use a specialized version of Skiplists */
 typedef struct zskiplistNode {
-    sds ele;
-    double score;
-    struct zskiplistNode *backward;
-    struct zskiplistLevel {
-        struct zskiplistNode *forward;
-        unsigned long span;
+    sds ele;                               //元素
+    double score;                          //权重值
+    struct zskiplistNode *backward;        //后向指针，指向上一个节点
+    struct zskiplistLevel {                //节点的level数组，保存每层上的前向指针和跨度
+        struct zskiplistNode *forward;     //前向指针，指向下一个节点
+        unsigned long span;                //跨度，在本层，本节点与下一个节点之间，跨越了几个0层节点
     } level[];
 } zskiplistNode;
 
+// 跳表
 typedef struct zskiplist {
-    struct zskiplistNode *header, *tail;
-    unsigned long length;
-    int level;
+    struct zskiplistNode *header, *tail;   //头尾
+    unsigned long length;                  //长度
+    int level;                             //调表层数，最大32
 } zskiplist;
 
+// 有序集合
+// 同时采用了哈希表及调表，从而实现了：既可以在O(1)下实现KV查询，也可以在O(nlogn)下实现范围查询
+// 两者之间的数据同步是一个问题
 typedef struct zset {
     dict *dict;
     zskiplist *zsl;

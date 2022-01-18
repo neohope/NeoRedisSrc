@@ -1,5 +1,6 @@
 /*
- * Sorted Set
+ * 有序集合
+ * 结构定义在server.h中
  */
 
 /*-----------------------------------------------------------------------------
@@ -50,6 +51,7 @@ zskiplistNode *zslCreateNode(int level, double score, sds ele) {
     return zn;
 }
 
+// 初始化调表
 /* Create a new skiplist. */
 zskiplist *zslCreate(void) {
     int j;
@@ -89,6 +91,7 @@ void zslFree(zskiplist *zsl) {
     zfree(zsl);
 }
 
+// 四分之一的概率节点可以上升一层，最大32层
 /* Returns a random level for the new skiplist node we are going to create.
  * The return value of this function is between 1 and ZSKIPLIST_MAXLEVEL
  * (both inclusive), with a powerlaw-alike distribution where higher
@@ -100,6 +103,7 @@ int zslRandomLevel(void) {
     return (level<ZSKIPLIST_MAXLEVEL) ? level : ZSKIPLIST_MAXLEVEL;
 }
 
+// 插入操作
 /* Insert a new node in the skiplist. Assumes the element does not already
  * exist (up to the caller to enforce that). The skiplist takes ownership
  * of the passed SDS string 'ele'. */
@@ -110,6 +114,12 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
 
     serverAssert(!isnan(score));
     x = zsl->header;
+    // 从最高层开始查找
+    // 只要下一个节点的rank值大于查找节点rank 或 下一节点rank值等于查找节点rank&&下一节点sds大于当前节点，就移动到本层的下一个节点
+    // 如果不满足，就移动到第一层，继续查找
+    //
+    // 使用了rank[i]计算了插入节点的rank值
+    // 同时使用了update[i]记录了可能需要变更的节点清单
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
@@ -123,11 +133,15 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
         }
         update[i] = x;
     }
+
+    // 每新增一个节点，先判断这个节点最高到第几层
     /* we assume the element is not already inside, since we allow duplicated
      * scores, reinserting the same element should never happen since the
      * caller of zslInsert() should test in the hash table if the element is
      * already inside or not. */
     level = zslRandomLevel();
+
+    // 增加了整个调表的高度
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
@@ -136,21 +150,28 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
         }
         zsl->level = level;
     }
+
+    //创建节点
     x = zslCreateNode(level,score,ele);
+
+    //对于<level的每一层，增加节点
     for (i = 0; i < level; i++) {
         x->level[i].forward = update[i]->level[i].forward;
         update[i]->level[i].forward = x;
 
+        //修正span
         /* update span covered by update[i] as x is inserted here */
         x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
 
+    //如果部分level没有增加整个节点，也要修正span
     /* increment span for untouched levels */
     for (i = level; i < zsl->level; i++) {
         update[i]->level[i].span++;
     }
 
+    //修正backwar指针
     x->backward = (update[0] == zsl->header) ? NULL : update[0];
     if (x->level[0].forward)
         x->level[0].forward->backward = x;
@@ -1311,6 +1332,7 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
         return 0;
     }
 
+    // 不同编码，处理方式不一样
     /* Update the sorted set according to its encoding. */
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
         unsigned char *eptr;
