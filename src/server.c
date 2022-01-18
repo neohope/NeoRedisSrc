@@ -2452,10 +2452,11 @@ void afterSleep(struct aeEventLoop *eventLoop) {
 }
 
 /* =========================== Server initialization ======================== */
-
+// 创建共享对象，节约内存空间，适用于只读场景
 void createSharedObjects(void) {
     int j;
 
+    //常见回复信息
     /* Shared command responses */
     shared.crlf = createObject(OBJ_STRING,sdsnew("\r\n"));
     shared.ok = createObject(OBJ_STRING,sdsnew("+OK\r\n"));
@@ -2470,6 +2471,7 @@ void createSharedObjects(void) {
     shared.colon = createObject(OBJ_STRING,sdsnew(":"));
     shared.plus = createObject(OBJ_STRING,sdsnew("+"));
 
+    //常见报错信息
     /* Shared command error responses */
     shared.wrongtypeerr = createObject(OBJ_STRING,sdsnew(
         "-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"));
@@ -2505,6 +2507,7 @@ void createSharedObjects(void) {
     shared.busykeyerr = createObject(OBJ_STRING,sdsnew(
         "-BUSYKEY Target key name already exists.\r\n"));
 
+    //协议版本号
     /* The shared NULL depends on the protocol version. */
     shared.null[0] = NULL;
     shared.null[1] = NULL;
@@ -2543,6 +2546,7 @@ void createSharedObjects(void) {
     shared.psubscribebulk = createStringObject("$10\r\npsubscribe\r\n",17);
     shared.punsubscribebulk = createStringObject("$12\r\npunsubscribe\r\n",19);
 
+    //常见命令
     /* Shared command names */
     shared.del = createStringObject("DEL",3);
     shared.unlink = createStringObject("UNLINK",6);
@@ -2568,6 +2572,7 @@ void createSharedObjects(void) {
     shared.set = createStringObject("SET",3);
     shared.eval = createStringObject("EVAL",4);
 
+    //常见参数
     /* Shared command argument */
     shared.left = createStringObject("left",4);
     shared.right = createStringObject("right",5);
@@ -2589,6 +2594,7 @@ void createSharedObjects(void) {
     shared.special_equals = createStringObject("=",1);
     shared.redacted = makeObjectShared(createStringObject("(redacted)",10));
 
+    //0到9999的整数
     for (j = 0; j < OBJ_SHARED_INTEGERS; j++) {
         shared.integers[j] =
             makeObjectShared(createObject(OBJ_STRING,(void*)(long)j));

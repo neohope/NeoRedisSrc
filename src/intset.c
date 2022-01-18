@@ -1,5 +1,9 @@
 /*
- * Set
+ * 整数集合
+ * Set存储如果都是数字，采用intset存储
+ * 变长编码：数字范围不同，intset 会选择 int16/int32/int64 编码（_intsetValueEncoding 函数）
+ * 有序：intset 在存储时是有序的，这意味着查找一个元素，可使用「二分查找」（intsetSearch 函数）
+ * 编码升级/降级：添加、更新、删除元素，数据范围发生变化，会引发编码长度升级或降级
  */
 
 #include <stdio.h>

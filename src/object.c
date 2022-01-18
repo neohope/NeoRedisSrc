@@ -47,12 +47,19 @@ robj *makeObjectShared(robj *o) {
     return o;
 }
 
+// 普通字符串
 /* Create a string object with encoding OBJ_ENCODING_RAW, that is a plain
  * string object where o->ptr points to a proper sds string. */
 robj *createRawStringObject(const char *ptr, size_t len) {
-    return createObject(OBJ_STRING, sdsnewlen(ptr,len));
+    return createObject(OBJ_STRING, sdsnewlen(ptr,len));    //sdsnewlen实际生成了一个sds结构，然后存储到了ptr中
 }
 
+// 嵌入式字符串
+// 当字符串长度小于44时，会将字符串内存直接放到redisObject之后，减少一次内存申请，同时降低内存碎片的情况
+// o->ptr 一开始指向sdshdr8，然后直接指向字符
+// x86平台寻址，最好为缓存的整数倍，jemalloc也会按2^n分配内存，所以redis限制了一个64字节的大小
+// N = 64 - (redisObject)16 - (sdshr8)3 - (结束符\0)1
+// 从而 N = 44 字节
 /* Create a string object with encoding OBJ_ENCODING_EMBSTR, that is
  * an object where the sds string is actually an unmodifiable string
  * allocated in the same chunk as the object itself. */
@@ -62,7 +69,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
 
     o->type = OBJ_STRING;
     o->encoding = OBJ_ENCODING_EMBSTR;
-    o->ptr = sh+1;
+    o->ptr = sh+1;         //实际指向了字符
     o->refcount = 1;
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
         o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
@@ -76,7 +83,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     if (ptr == SDS_NOINIT)
         sh->buf[len] = '\0';
     else if (ptr) {
-        memcpy(sh->buf,ptr,len);
+        memcpy(sh->buf,ptr,len);         //拷贝字符串内容
         sh->buf[len] = '\0';
     } else {
         memset(sh->buf,0,len+1);
@@ -84,6 +91,7 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
     return o;
 }
 
+// 在处理字符串的时候，如果字符串长度小于OBJ_ENCODING_EMBSTR_SIZE_LIMIT，会使用嵌入式字符串
 /* Create a string object with EMBSTR encoding if it is smaller than
  * OBJ_ENCODING_EMBSTR_SIZE_LIMIT, otherwise the RAW encoding is
  * used.
@@ -93,9 +101,9 @@ robj *createEmbeddedStringObject(const char *ptr, size_t len) {
 #define OBJ_ENCODING_EMBSTR_SIZE_LIMIT 44
 robj *createStringObject(const char *ptr, size_t len) {
     if (len <= OBJ_ENCODING_EMBSTR_SIZE_LIMIT)
-        return createEmbeddedStringObject(ptr,len);
+        return createEmbeddedStringObject(ptr,len);    //嵌入式字符串
     else
-        return createRawStringObject(ptr,len);
+        return createRawStringObject(ptr,len);         //普通字符串
 }
 
 /* Same as CreateRawStringObject, can return NULL if allocation fails */
@@ -409,6 +417,10 @@ void trimStringObjectIfNeeded(robj *o) {
     }
 }
 
+// String有三种存储结构
+//embstr：小于 44 字节，嵌入式存储，redisObject 和 SDS 一起分配内存，只分配 1 次内存
+//rawstr：大于 44 字节，redisObject 和 SDS 分开存储，需分配 2 次内存
+//long：整数存储（小于 10000，使用共享对象池存储，但有个前提：Redis 没有设置淘汰策略）
 /* Try to encode a string object in order to save space */
 robj *tryObjectEncoding(robj *o) {
     long value;
