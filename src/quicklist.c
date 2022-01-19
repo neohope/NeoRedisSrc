@@ -1,5 +1,9 @@
-/* quicklist.c - A doubly linked list of ziplists
- * 基于ziplist的双向链表
+/*
+ * quicklist.c - A doubly linked list of ziplists
+ * quicklist是一个双向链表，而链表中的每个元素又是一个 ziplist
+ * 
+ * quicklist 通过控制每个 quicklistNode 中，ziplist 的大小或是元素个数，
+ * 就有效减少了在 ziplist 中新增或修改元素后，发生连锁更新的情况，从而提供了更好的访问性能。
  */
 
 #include <string.h> /* for memcpy */
@@ -399,6 +403,7 @@ _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
 
 #define sizeMeetsSafetyLimit(sz) ((sz) <= SIZE_SAFETY_LIMIT)
 
+// quicklistNode节点是否能插入此数据
 REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
                                            const int fill, const size_t sz) {
     if (unlikely(!node))
@@ -419,6 +424,8 @@ REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
     else
         ziplist_overhead += 5;
 
+    //单个ziplist大小不超过8KB
+    //单个quicklistNode的fill factor要小于要求
     /* new_sz overestimates if 'sz' encodes to an integer type */
     unsigned int new_sz = node->sz + sz + ziplist_overhead;
     if (likely(_quicklistNodeSizeMeetsOptimizationRequirement(new_sz, fill)))

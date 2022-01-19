@@ -1,5 +1,6 @@
 /* 
- * 字符串序列化
+ * 紧凑列表
+ * listpack总字节数【32b】|listpack元素数量【16b】|listpack entry{当前项目编码encoding|实际数据data|编码及数据总长度len}|LP_EOF=255【8b】
  *
  * Listpack -- A lists of strings serialization format
  *

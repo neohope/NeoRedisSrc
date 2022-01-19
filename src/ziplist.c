@@ -6,8 +6,10 @@
  * 
  * 连续内存存储：每个元素紧凑排列，内存利用率高
  * 变长编码：存储数据时，采用变长编码（满足数据长度的前提下，尽可能少分配内存）
- * 寻找元素需遍历O(N)：存放太多元素，性能会下降（适合少量数据存储）
- * 级联更新：更新、删除元素，会引发级联更新（因为内存连续，前面数据膨胀/删除了，后面要跟着一起移动）
+ * 
+ * 问题：
+ * 查找复杂度高：O(N)，存放太多元素，性能会下降（适合少量数据存储）
+ * 潜在的连锁更新风险：更新、删除元素，会引发级联更新（因为内存连续，前面数据膨胀/删除了，后面要跟着一起移动）
  *
  * The ziplist is a specially encoded dually linked list that is designed
  * to be very memory efficient. It stores both strings and integer values,

@@ -1271,6 +1271,7 @@ int zsetScore(robj *zobj, sds member, double *score) {
     return C_OK;
 }
 
+// 插入数据
 /* Add a new element or update the score of an existing element in a sorted
  * set, regardless of its encoding.
  *
@@ -1278,14 +1279,14 @@ int zsetScore(robj *zobj, sds member, double *score) {
  *
  * The input flags are the following:
  *
- * ZADD_INCR: Increment the current element score by 'score' instead of updating
+ * ZADD_INCR: Increment the current element score by 'score' instead of updating       //对当前元素score增加score
  *            the current element score. If the element does not exist, we
  *            assume 0 as previous score.
- * ZADD_NX:   Perform the operation only if the element does not exist.
- * ZADD_XX:   Perform the operation only if the element already exist.
- * ZADD_GT:   Perform the operation on existing elements only if the new score is 
+ * ZADD_NX:   Perform the operation only if the element does not exist.                //元素必须不存在才进行插入
+ * ZADD_XX:   Perform the operation only if the element already exist.                 //元素必须存才插入
+ * ZADD_GT:   Perform the operation on existing elements only if the new score is      //新元素score更大时进行插入
  *            greater than the current score.
- * ZADD_LT:   Perform the operation on existing elements only if the new score is 
+ * ZADD_LT:   Perform the operation on existing elements only if the new score is      //新元素score更小时进行插入
  *            less than the current score.
  *
  * When ZADD_INCR is used, the new score of the element is stored in
@@ -1335,9 +1336,11 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
     // 不同编码，处理方式不一样
     /* Update the sorted set according to its encoding. */
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
+        // ziplist编码方式
         unsigned char *eptr;
 
         if ((eptr = zzlFind(zobj->ptr,ele,&curscore)) != NULL) {
+            //元素已存在，且标记为nx，不操作
             /* NX? Return, same element already exists. */
             if (nx) {
                 *out_flags |= ZADD_OUT_NOP;
@@ -1361,6 +1364,7 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
 
             if (newscore) *newscore = score;
 
+            //移除之前的元素，重新插入新元素，根据新增的score，调整元素位置
             /* Remove and re-insert when score changed. */
             if (score != curscore) {
                 zobj->ptr = zzlDelete(zobj->ptr,eptr);
@@ -1369,20 +1373,24 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
             }
             return 1;
         } else if (!xx) {
+            //元素不存在，而且没有标记元素必须存在
             /* check if the element is too large or the list
              * becomes too long *before* executing zzlInsert. */
             if (zzlLength(zobj->ptr)+1 > server.zset_max_ziplist_entries ||
                 sdslen(ele) > server.zset_max_ziplist_value ||
                 !ziplistSafeToAdd(zobj->ptr, sdslen(ele)))
             {
+                //超出zset_max_ziplist_entries，要转换为skiplist
                 zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
             } else {
+                //直接进行插入操作
                 zobj->ptr = zzlInsert(zobj->ptr,ele,score);
                 if (newscore) *newscore = score;
                 *out_flags |= ZADD_OUT_ADDED;
                 return 1;
             }
         } else {
+            //元素不存在，而且标记为元素必须存在，返回
             *out_flags |= ZADD_OUT_NOP;
             return 1;
         }
@@ -1391,12 +1399,14 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
     /* Note that the above block handling ziplist would have either returned or
      * converted the key to skiplist. */
     if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+        //skiplist+dict编码方式
         zset *zs = zobj->ptr;
         zskiplistNode *znode;
         dictEntry *de;
 
         de = dictFind(zs->dict,ele);
         if (de != NULL) {
+            //元素已存在，且标记为nx，不操作
             /* NX? Return, same element already exists. */
             if (nx) {
                 *out_flags |= ZADD_OUT_NOP;
@@ -1424,7 +1434,10 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
 
             /* Remove and re-insert when score changes. */
             if (score != curscore) {
+                //移除之前的元素，重新插入新元素，根据新增的score，调整元素位置
                 znode = zslUpdateScore(zs->zsl,curscore,ele,score);
+
+                //让哈希表元素的值指向跳表结点的权重
                 /* Note that we did not removed the original element from
                  * the hash table representing the sorted set, so we just
                  * update the score. */
@@ -1433,13 +1446,17 @@ int zsetAdd(robj *zobj, double score, sds ele, int in_flags, int *out_flags, dou
             }
             return 1;
         } else if (!xx) {
+            //元素不存在，而且没有标记元素必须存在
             ele = sdsdup(ele);
+            //在skiplist插入元素
             znode = zslInsert(zs->zsl,score,ele);
+            //在dict插入元素
             serverAssert(dictAdd(zs->dict,ele,&znode->score) == DICT_OK);
             *out_flags |= ZADD_OUT_ADDED;
             if (newscore) *newscore = score;
             return 1;
         } else {
+            //元素不存在，而且标记为元素必须存在，返回
             *out_flags |= ZADD_OUT_NOP;
             return 1;
         }

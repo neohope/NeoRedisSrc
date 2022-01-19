@@ -994,7 +994,7 @@ typedef struct zskiplist {
 
 // 有序集合
 // 同时采用了哈希表及调表，从而实现了：既可以在O(1)下实现KV查询，也可以在O(nlogn)下实现范围查询
-// 两者之间的数据同步是一个问题
+// zset会有两种数据方式：1、数据量小时为ziplist；2、数据量大了后为dict+skiplist；（zset-max-ziplist-entries、zset-max-ziplist-value）
 typedef struct zset {
     dict *dict;
     zskiplist *zsl;

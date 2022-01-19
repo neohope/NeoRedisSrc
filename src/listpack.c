@@ -1,5 +1,6 @@
 /* 
- * 字符串序列化
+ * 紧凑列表
+ * listpack总字节数【32b】|listpack元素数量【16b】|listpack entry{当前项目编码encoding|实际数据data|编码及数据总长度len}|LP_EOF=255【8b】
  *
  * Listpack -- A lists of strings serialization format
  *
@@ -29,38 +30,47 @@
 #define LP_ENCODING_INT 0
 #define LP_ENCODING_STRING 1
 
+//b0标识1位+7位无符号数
 #define LP_ENCODING_7BIT_UINT 0
 #define LP_ENCODING_7BIT_UINT_MASK 0x80
 #define LP_ENCODING_IS_7BIT_UINT(byte) (((byte)&LP_ENCODING_7BIT_UINT_MASK)==LP_ENCODING_7BIT_UINT)
 
+//b10标识2位+6位字符串
 #define LP_ENCODING_6BIT_STR 0x80
 #define LP_ENCODING_6BIT_STR_MASK 0xC0
 #define LP_ENCODING_IS_6BIT_STR(byte) (((byte)&LP_ENCODING_6BIT_STR_MASK)==LP_ENCODING_6BIT_STR)
 
+//b110标识3位+13位数字
 #define LP_ENCODING_13BIT_INT 0xC0
 #define LP_ENCODING_13BIT_INT_MASK 0xE0
 #define LP_ENCODING_IS_13BIT_INT(byte) (((byte)&LP_ENCODING_13BIT_INT_MASK)==LP_ENCODING_13BIT_INT)
 
+//b1110标识4位+12位字符串
 #define LP_ENCODING_12BIT_STR 0xE0
 #define LP_ENCODING_12BIT_STR_MASK 0xF0
 #define LP_ENCODING_IS_12BIT_STR(byte) (((byte)&LP_ENCODING_12BIT_STR_MASK)==LP_ENCODING_12BIT_STR)
 
+//b11110001标识8位+16位数字
 #define LP_ENCODING_16BIT_INT 0xF1
 #define LP_ENCODING_16BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_16BIT_INT(byte) (((byte)&LP_ENCODING_16BIT_INT_MASK)==LP_ENCODING_16BIT_INT)
 
+//b11110010标识8位+24位数字
 #define LP_ENCODING_24BIT_INT 0xF2
 #define LP_ENCODING_24BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_24BIT_INT(byte) (((byte)&LP_ENCODING_24BIT_INT_MASK)==LP_ENCODING_24BIT_INT)
 
+//b11110011标识8位+32位数字
 #define LP_ENCODING_32BIT_INT 0xF3
 #define LP_ENCODING_32BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_32BIT_INT(byte) (((byte)&LP_ENCODING_32BIT_INT_MASK)==LP_ENCODING_32BIT_INT)
 
+//b11110100标识8位+64位数字
 #define LP_ENCODING_64BIT_INT 0xF4
 #define LP_ENCODING_64BIT_INT_MASK 0xFF
 #define LP_ENCODING_IS_64BIT_INT(byte) (((byte)&LP_ENCODING_64BIT_INT_MASK)==LP_ENCODING_64BIT_INT)
 
+//b11110000标识8位+32位字符串
 #define LP_ENCODING_32BIT_STR 0xF0
 #define LP_ENCODING_32BIT_STR_MASK 0xFF
 #define LP_ENCODING_IS_32BIT_STR(byte) (((byte)&LP_ENCODING_32BIT_STR_MASK)==LP_ENCODING_32BIT_STR)
@@ -197,6 +207,7 @@ int lpStringToInt64(const char *s, unsigned long slen, int64_t *value) {
     return 1;
 }
 
+//新建listpack
 /* Create a new, empty listpack.
  * On success the new listpack is returned, otherwise an error is returned.
  * Pre-allocate at least `capacity` bytes of memory,
