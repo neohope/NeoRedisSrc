@@ -350,6 +350,7 @@ unsigned long lpEncodeBacklen(unsigned char *buf, uint64_t l) {
     }
 }
 
+// 由于entry-len采用了特殊编码方式，每个byte只用了7bit，从右向左寻找时，找到第一个Byte，首位为0的，表示entry-len结束
 /* Decode the backlen and returns it. If the encoding looks invalid (more than
  * 5 bytes are used), UINT64_MAX is returned to report the problem. */
 uint64_t lpDecodeBacklen(unsigned char *p) {
@@ -426,17 +427,20 @@ uint32_t lpCurrentEncodedSizeBytes(unsigned char *p) {
     return 0;
 }
 
+// 跳过一个element
 /* Skip the current entry returning the next. It is invalid to call this
  * function if the current element is the EOF element at the end of the
  * listpack, however, while this function is used to implement lpNext(),
  * it does not return NULL when the EOF element is encountered. */
 unsigned char *lpSkip(unsigned char *p) {
-    unsigned long entrylen = lpCurrentEncodedSizeUnsafe(p);
-    entrylen += lpEncodeBacklen(NULL,entrylen);
+    //listpack entry{当前项目编码encoding|实际数据data|编码及数据总长度len}
+    unsigned long entrylen = lpCurrentEncodedSizeUnsafe(p);             //判断编码类型，以及encoding+data长度
+    entrylen += lpEncodeBacklen(NULL,entrylen);                         //获取len长度，从而得到了整个entry长度
     p += entrylen;
     return p;
 }
 
+// 下一个element
 /* If 'p' points to an element of the listpack, calling lpNext() will return
  * the pointer to the next element (the one on the right), or NULL if 'p'
  * already pointed to the last element of the listpack. */
@@ -448,20 +452,28 @@ unsigned char *lpNext(unsigned char *lp, unsigned char *p) {
     return p;
 }
 
+// 上一个element
 /* If 'p' points to an element of the listpack, calling lpPrev() will return
  * the pointer to the previous element (the one on the left), or NULL if 'p'
  * already pointed to the first element of the listpack. */
 unsigned char *lpPrev(unsigned char *lp, unsigned char *p) {
     assert(p);
     if (p-lp == LP_HDR_SIZE) return NULL;
+
+    //listpack entry{当前项目编码encoding|实际数据data|编码及数据总长度len}
     p--; /* Seek the first backlen byte of the last element. */
+
+    //根据entry-len编码方式，获取内保存的长度，也就是encoding+data长度
     uint64_t prevlen = lpDecodeBacklen(p);
+    //获取len长度，从而得到了整个entry长度
     prevlen += lpEncodeBacklen(NULL,prevlen);
+    //定位到上一个元素的结束
     p -= prevlen-1; /* Seek the first byte of the previous entry. */
     lpAssertValidEntry(lp, lpBytes(lp), p);
     return p;
 }
 
+// 第一个element
 /* Return a pointer to the first element of the listpack, or NULL if the
  * listpack has no elements. */
 unsigned char *lpFirst(unsigned char *lp) {
@@ -471,6 +483,7 @@ unsigned char *lpFirst(unsigned char *lp) {
     return p;
 }
 
+// 最后一个element，根据总长度快速得到
 /* Return a pointer to the last element of the listpack, or NULL if the
  * listpack has no elements. */
 unsigned char *lpLast(unsigned char *lp) {

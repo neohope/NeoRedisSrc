@@ -1,7 +1,6 @@
 NeoRedisSrc
 =========
-NeoRedisSrc is a practing project which is based on Redis6.2.
-
+NeoRedisSrc is a practing project which is based on Redis6.2
 
 how-to-build
 ============
@@ -16,12 +15,13 @@ source files
 
 数据结构：
 - 字符串（t_string.c、sds.c、sdsalloc.h）
-- 位运算（bitops.c）
 - 链表（t_list.c、ziplist.c）
 - 双向链表（adlist.c、quicklist.c）
+- 压缩链表（ziplist.c、quicklist.c、listpack.c）
 - 哈希表（t_hash.c、ziplist.c、dict.c、zipmap.c）
 - 集合（t_set.c、intset.c）
 - 有序集合（t_zset.c、ziplist.c、dict.c）
+- 位运算（bitops.c）
 - 基数树（rax.c）
 - HyperLogLog（hyperloglog.c）
 - 经纬度（geo.c、geohash.c、geohash_helper.c）
@@ -39,10 +39,11 @@ source files
 
 全局功能：
 - Server入口（server.c、anet.c）
+- 命令入口(server.h)
 - CLI（cli-common.c、reids-cli.c、help.h、setproctitle.c）
 - 事件驱动（ae.c、ae_epoll.c、ae_kqueue.c、ae_evport.c、ae_select.c、networking.c）
 - 事务（multi.c）
-- 时钟管理（monotonic.c、localtime.c）
+- 时钟管理（单调时钟monotonic.c、本地时钟localtime.c）
 - 权限管理（acl.c）
 - 配置管理（config.c）
 - 模块管理（module.c）
@@ -55,7 +56,7 @@ source files
 - 大小端转换（endinconv.c）
 - 内存配额（evict.c）
 - 原子操作（atomicvar.h）
-- CPU绑定（setcpuaffinity.c）
+- CPU绑核（setcpuaffinity.c）
 
 IO与网络：
 - IO（syncio.c、rio.c）
