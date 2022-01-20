@@ -1,4 +1,5 @@
-/* 基数树
+/* 
+ * 基数树
  * Rax -- A radix tree implementation.
  *
  */
@@ -105,6 +106,7 @@ typedef struct raxNode {
     unsigned char data[];
 } raxNode;
 
+// 基数树
 typedef struct rax {
     raxNode *head;
     uint64_t numele;

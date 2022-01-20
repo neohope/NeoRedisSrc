@@ -23,9 +23,9 @@ source files
 - 有序集合（t_zset.c、ziplist.c、dict.c）
 - 位运算（bitops.c）
 - 基数树（rax.c）
-- HyperLogLog（hyperloglog.c）
+- 访问统计HyperLogLog（hyperloglog.c）【比如当日访问IP数统计】
 - 经纬度（geo.c、geohash.c、geohash_helper.c）
-- 流（t_stream.c、rax.c、listpack.c）
+- 消息队列（t_stream.c、rax.c、listpack.c）
 - Redis对象（object.c）
 
 算法：

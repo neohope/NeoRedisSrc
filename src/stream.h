@@ -1,5 +1,13 @@
 /*
  * Stream
+ *
+ * 消息 ID由毫秒时间戳和此毫秒内的消息序号组成
+ * 
+ * 消息特点：
+ * 连续插入的消息 ID，其前缀有较多部分是相同的。
+ * 连续插入的消息，它们对应键值对中的键通常是相同的。
+ * 
+ * 消息ID是作为Radix Tree中的 key，消息具体数据是使用listpack保存，并作为value和消息ID一起保存到Radix Tree中
  */
 #ifndef STREAM_H
 #define STREAM_H
@@ -7,6 +15,7 @@
 #include "rax.h"
 #include "listpack.h"
 
+// stream消息id
 /* Stream item ID: a 128 bit number composed of a milliseconds time and
  * a sequence counter. IDs generated in the same millisecond (or in a past
  * millisecond if the clock jumped backward) will use the millisecond time
@@ -16,11 +25,12 @@ typedef struct streamID {
     uint64_t seq;       /* Sequence number. */
 } streamID;
 
+// stream定义
 typedef struct stream {
-    rax *rax;               /* The radix tree holding the stream. */
-    uint64_t length;        /* Number of elements inside this stream. */
-    streamID last_id;       /* Zero if there are yet no items. */
-    rax *cgroups;           /* Consumer groups dictionary: name -> streamCG */
+    rax *rax;               /* The radix tree holding the stream. */            //基数树
+    uint64_t length;        /* Number of elements inside this stream. */        //元素数
+    streamID last_id;       /* Zero if there are yet no items. */               //当前消息流中最后插入的消息的ID
+    rax *cgroups;           /* Consumer groups dictionary: name -> streamCG */  //当前消息流的消费组信息，也是用Radix Tree保存
 } stream;
 
 /* We define an iterator to iterate stream items in an abstract way, without
