@@ -1,5 +1,13 @@
 /* 
  * 基数树
+ * 
+ * 适合有公共前缀的Key
+ * 进行了节点压缩，节约内存，降低层级，提升销量
+ * 
+ * 当key过于离散的时候，基数树反而失去了优势，内存使用多，查找速度慢
+ * 增删节点，可能导致其他节点的压缩、反压缩
+ * 范围查询效率低
+ * 
  * Rax -- A radix tree implementation.
  *
  */
@@ -71,11 +79,32 @@
  */
 
 #define RAX_NODE_MAX_SIZE ((1<<29)-1)
+
+ // rax节点
+ // 前四项，一共32b，也叫HDR
+ // HDR|data
+ // iskey【1b】|isnull【1b】|iscompr【1b】|size【29b】|data【char[]】
+ //
+ // 其中：
+ // key的值，不包括当前data中的内容
+ // 非压缩节点来说，data数组包括子节点对应的字符、指向子节点的指针，以及节点表示key时对应的value指针；
+ // 压缩节点data数组包括子节点对应的合并字符串、指向子节点的指针，以及节点为key时的value指针；【注意只能有一个子节点！】
+ // 一个节点无法同时指向表示单个字符的子节点和表示合并字符串的子节点；要么指向多个单字符节点，要么指向一个字符串节点
+ // 叶子节点是一个不包含子节点指针的raxNode节点
+ //
+ // 基数树节点，包括两种：非压缩节点和压缩节点
+ //
+ // 非压缩节点会包含多个指向不同子节点的指针，以及多个子节点所对应的字符
+ // iskey【1b】|isnull【1b】|iscompr【1b】|size【29b】|字符1 字符2 字符3 内存填充 字符1指针 字符2指针 字符3指针|VALUE【iskey && !isnull】
+ //
+ // 压缩节点会包含一个指向子节点的指针，以及子节点所代表的合并的字符串。
+ // iskey【1b】|isnull【1b】|iscompr【1b】|size【29b】|字符串 padding填充 字符串指针|VALUE【iskey && !isnull】
+ // 
 typedef struct raxNode {
-    uint32_t iskey:1;     /* Does this node contain a key? */
-    uint32_t isnull:1;    /* Associated value is NULL (don't store it). */
-    uint32_t iscompr:1;   /* Node is compressed. */
-    uint32_t size:29;     /* Number of children, or compressed string len. */
+    uint32_t iskey:1;     /* Does this node contain a key? */                    //节点是否是一个key，从root到此节点的数据是否是一个key
+    uint32_t isnull:1;    /* Associated value is NULL (don't store it). */       //节点的值是否为NULL，即是否给value分配了空间
+    uint32_t iscompr:1;   /* Node is compressed. */                              //节点是否位压缩节点
+    uint32_t size:29;     /* Number of children, or compressed string len. */    //节点大小：压缩节点表示压缩数据的长度；非压缩节点，表示子节点个数
     /* Data layout is as follows:
      *
      * If node is not compressed we have 'size' bytes, one for each children
@@ -103,14 +132,14 @@ typedef struct raxNode {
      * children, an additional value pointer is present (as you can see
      * in the representation above as "value-ptr" field).
      */
-    unsigned char data[];
+    unsigned char data[];                                                        //节点的实际存储数据
 } raxNode;
 
 // 基数树
 typedef struct rax {
-    raxNode *head;
-    uint64_t numele;
-    uint64_t numnodes;
+    raxNode *head;             //Radix Tree的根指针
+    uint64_t numele;           //Radix Tree中key的个数
+    uint64_t numnodes;         //Radix Tree中Node的个数
 } rax;
 
 /* Stack data structure used by raxLowWalk() in order to, optionally, return

@@ -1,5 +1,7 @@
 /* 
  * 基数树
+ * 结构与字典树类似，但如果一系列节点之间的分支连接是唯一的，那么这些单字符节点会合并成一个节点
+ * 
  * Rax -- A radix tree implementation.
  *
  */
@@ -155,6 +157,8 @@ static inline void raxStackFree(raxStack *ts) {
     (((n)->iskey && !(n)->isnull)*sizeof(void*)) \
 )
 
+// 新增非压缩节点
+// 需要内存做padding
 /* Allocate a new non compressed node with the specified number of children.
  * If datafiled is true, the allocation is made large enough to hold the
  * associated data pointer.
@@ -172,6 +176,7 @@ raxNode *raxNewNode(size_t children, int datafield) {
     return node;
 }
 
+// 新建基数树
 /* Allocate a new rax and return its pointer. On out of memory the function
  * returns NULL. */
 rax *raxNew(void) {
@@ -196,6 +201,7 @@ raxNode *raxReallocForData(raxNode *n, void *data) {
     return rax_realloc(n,curlen+sizeof(void*));
 }
 
+// 设置节点中的value指针
 /* Set the node auxiliary data to the specified pointer. */
 void raxSetData(raxNode *n, void *data) {
     n->iskey = 1;
@@ -209,6 +215,7 @@ void raxSetData(raxNode *n, void *data) {
     }
 }
 
+// 从节点获取value
 /* Get the node auxiliary data. */
 void *raxGetData(raxNode *n) {
     if (n->isnull) return NULL;
@@ -218,6 +225,7 @@ void *raxGetData(raxNode *n) {
     return data;
 }
 
+// 增加子节点
 /* Add a new child to the node 'n' representing the character 'c' and return
  * its new pointer, as well as the child pointer by reference. Additionally
  * '***parentlink' is populated with the raxNode pointer-to-pointer of where
@@ -360,6 +368,7 @@ raxNode *raxAddChild(raxNode *n, unsigned char c, raxNode **childptr, raxNode **
     return n;
 }
 
+// 新建压缩节点
 /* Turn the node 'n', that must be a node without any children, into a
  * compressed node representing a set of nodes linked one after the other
  * and having exactly one child each. The node can be a key or not: this
@@ -401,6 +410,7 @@ raxNode *raxCompressNode(raxNode *n, unsigned char *s, size_t len, raxNode **chi
     return n;
 }
 
+// 基数树节点查找
 /* Low level function that walks the tree looking for the string
  * 's' of 'len' bytes. The function returns the number of characters
  * of the key that was possible to process: if the returned integer
@@ -473,6 +483,7 @@ static inline size_t raxLowWalk(rax *rax, unsigned char *s, size_t len, raxNode 
     return i;
 }
 
+//插入长度为len的字符串
 /* Insert the element 's' of size 'len', setting as auxiliary data
  * the pointer 'data'. If the element is already present, the associated
  * data is updated (only if 'overwrite' is set to 1), and 0 is returned,
@@ -916,6 +927,7 @@ raxNode **raxFindParentLink(raxNode *parent, raxNode *child) {
     return cp;
 }
 
+// 删除子节点
 /* Low level child removal from node. The new node pointer (after the child
  * removal) is returned. Note that this function does not fix the pointer
  * of the parent node in its parent, so this task is up to the caller.
@@ -991,6 +1003,7 @@ raxNode *raxRemoveChild(raxNode *parent, raxNode *child) {
     return newnode ? newnode : parent;
 }
 
+// 删除节点
 /* Remove the specified item. Returns 1 if the item was found and
  * deleted, 0 otherwise. */
 int raxRemove(rax *rax, unsigned char *s, size_t len, void **old) {
