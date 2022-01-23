@@ -454,6 +454,7 @@ int aeWait(int fd, int mask, long long milliseconds) {
     }
 }
 
+// 事件循环入口函数
 void aeMain(aeEventLoop *eventLoop) {
     eventLoop->stop = 0;
     while (!eventLoop->stop) {

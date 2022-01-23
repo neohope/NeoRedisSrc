@@ -65,9 +65,9 @@ typedef long long ustime_t; /* microsecond time type. */
 #define C_ERR                   -1
 
 /* Static server configuration */
-#define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. */
-#define CONFIG_MIN_HZ            1
-#define CONFIG_MAX_HZ            500
+#define CONFIG_DEFAULT_HZ        10             /* Time interrupt calls/sec. */    //server后台任务的默认运行频率
+#define CONFIG_MIN_HZ            1                                                 // server后台任务的最小运行频率
+#define CONFIG_MAX_HZ            500                                               // server后台任务的最大运行频率
 #define MAX_CLIENTS_PER_CLOCK_TICK 200          /* HZ is adapted based on that. */
 #define CONFIG_MAX_LINE    1024
 #define CRON_DBS_PER_CALL 16

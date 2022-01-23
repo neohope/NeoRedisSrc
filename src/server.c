@@ -2991,6 +2991,7 @@ void closeSocketListeners(socketFds *sfd) {
     sfd->count = 0;
 }
 
+//为每一个监听的IP设置连接事件的处理函数acceptTcpHandler
 /* Create an event handler for accepting new connections in TCP or TLS domain sockets.
  * This works atomically for all socket fds */
 int createSocketAcceptHandler(socketFds *sfd, aeFileProc *accept_handler) {
@@ -3124,6 +3125,7 @@ void makeThreadKillable(void) {
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 }
 
+// 初始化redis服务
 void initServer(void) {
     int j;
 
@@ -3137,46 +3139,52 @@ void initServer(void) {
             server.syslog_facility);
     }
 
+    //初始化全局结构
     /* Initialization after setting defaults from the config system. */
-    server.aof_state = server.aof_enabled ? AOF_ON : AOF_OFF;
-    server.hz = server.config_hz;
-    server.pid = getpid();
-    server.in_fork_child = CHILD_TYPE_NONE;
-    server.main_thread_id = pthread_self();
-    server.current_client = NULL;
+    server.aof_state = server.aof_enabled ? AOF_ON : AOF_OFF;         //AOF是否开启
+    server.hz = server.config_hz;                                     //运行频率
+    server.pid = getpid();                                            //主进程PID
+    server.in_fork_child = CHILD_TYPE_NONE;                           //表示这是主进程，还是子进程
+    server.main_thread_id = pthread_self();                           //主线程ID
+    server.current_client = NULL;                                     //执行当前命令的CHILD
     server.errors = raxNew();
     server.fixed_time_expire = 0;
-    server.clients = listCreate();
-    server.clients_index = raxNew();
-    server.clients_to_close = listCreate();
-    server.slaves = listCreate();
-    server.monitors = listCreate();
+    server.clients = listCreate();                                    //client列表
+    server.clients_index = raxNew();                                  //active client 基数树
+    server.clients_to_close = listCreate();                           //等待异步关闭的client列表
+    server.slaves = listCreate();                                     //slave列表
+    server.monitors = listCreate();                                   //monitor列表
     server.clients_pending_write = listCreate();
     server.clients_pending_read = listCreate();
-    server.clients_timeout_table = raxNew();
-    server.replication_allowed = 1;
-    server.slaveseldb = -1; /* Force to emit the first SELECT command. */
-    server.unblocked_clients = listCreate();
-    server.ready_keys = listCreate();
-    server.clients_waiting_acks = listCreate();
+    server.clients_timeout_table = raxNew();                          //被block的client基数树
+    server.replication_allowed = 1;                                   //分片
+    server.slaveseldb = -1;                                           //忽略第一次master选择，也就是SELECT命令
+    server.unblocked_clients = listCreate();                          //下次命令被解封的client列表
+    server.ready_keys = listCreate();                                 //BLOB的ready keys清单
+    server.clients_waiting_acks = listCreate();                       //WAIT的client列表
     server.get_ack_from_slaves = 0;
     server.client_pause_type = 0;
-    server.paused_clients = listCreate();
+    server.paused_clients = listCreate();                             //PAUSED的client列表
     server.events_processed_while_blocked = 0;
-    server.system_memory_size = zmalloc_get_memory_size();
+    server.system_memory_size = zmalloc_get_memory_size();            //OS最大可用内存
     server.blocked_last_cron = 0;
     server.blocking_op_nesting = 0;
 
+    //tls配置
     if ((server.tls_port || server.tls_replication || server.tls_cluster)
                 && tlsConfigure(&server.tls_ctx_config) == C_ERR) {
         serverLog(LL_WARNING, "Failed to configure TLS. Check logs for more info.");
         exit(1);
     }
 
+    //创建共享对象，适用于只读
     createSharedObjects();
+    //尝试挑战进程可以打开的最大文件数量
     adjustOpenFilesLimit();
+    //单调时钟
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
+    //创建消息循环
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -3184,8 +3192,10 @@ void initServer(void) {
             strerror(errno));
         exit(1);
     }
+    //创建db所需内存
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
 
+    //开启TCP socket监听
     /* Open the TCP listening socket for the user commands. */
     if (server.port != 0 &&
         listenToPort(server.port,&server.ipfd) == C_ERR) {
@@ -3198,6 +3208,7 @@ void initServer(void) {
         exit(1);
     }
 
+    //开启Unix domain socket监听
     /* Open the listening Unix domain socket. */
     if (server.unixsocket != NULL) {
         unlink(server.unixsocket); /* don't care if this fails */
@@ -3220,17 +3231,18 @@ void initServer(void) {
     // 创建全局db
     /* Create the Redis databases, and initialize other internal state. */
     for (j = 0; j < server.dbnum; j++) {
-        server.db[j].dict = dictCreate(&dbDictType,NULL);
-        server.db[j].expires = dictCreate(&dbExpiresDictType,NULL);
-        server.db[j].expires_cursor = 0;
-        server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);
-        server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType,NULL);
-        server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);
-        server.db[j].id = j;
-        server.db[j].avg_ttl = 0;
-        server.db[j].defrag_later = listCreate();
+        server.db[j].dict = dictCreate(&dbDictType,NULL);                           //创建全局哈希表
+        server.db[j].expires = dictCreate(&dbExpiresDictType,NULL);                 //创建过期key的信息表
+        server.db[j].expires_cursor = 0;                                            //过期key指针
+        server.db[j].blocking_keys = dictCreate(&keylistDictType,NULL);             //为被BLPOP阻塞的key创建信息表
+        server.db[j].ready_keys = dictCreate(&objectKeyPointerValueDictType,NULL);  //为将执行PUSH的阻塞key创建信息表
+        server.db[j].watched_keys = dictCreate(&keylistDictType,NULL);              //为被MULTI/WATCH操作监听的key创建信息表
+        server.db[j].id = j;                                                        //id
+        server.db[j].avg_ttl = 0;                                                   //平均TTL
+        server.db[j].defrag_later = listCreate();                                   //需要defrag的key列表
         listSetFreeMethod(server.db[j].defrag_later,(void (*)(void*))sdsfree);
     }
+    //生产LRU池
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
     server.pubsub_channels = dictCreate(&keylistDictType,NULL);
     server.pubsub_patterns = dictCreate(&keylistDictType,NULL);
@@ -3251,6 +3263,7 @@ void initServer(void) {
     server.child_info_pipe[0] = -1;
     server.child_info_pipe[1] = -1;
     server.child_info_nread = 0;
+    //重置AOF rewrite buffer状态
     aofRewriteBufferReset();
     server.aof_buf = sdsempty();
     server.lastsave = time(NULL); /* At startup we consider the DB saved. */
@@ -3258,6 +3271,7 @@ void initServer(void) {
     server.rdb_save_time_last = -1;
     server.rdb_save_time_start = -1;
     server.dirty = 0;
+    //重置服务器状态
     resetServerStats();
     /* A few stats we don't want to reset: server startup time, and peak mem. */
     server.stat_starttime = time(NULL);
@@ -3282,6 +3296,7 @@ void initServer(void) {
     server.aof_last_write_errno = 0;
     server.repl_good_slaves_count = 0;
 
+    //创建Timer定时事件，用于处理后台操作
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
@@ -3290,6 +3305,7 @@ void initServer(void) {
         exit(1);
     }
 
+    // 创建TCP及Unix的Socket处理函数
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
     if (createSocketAcceptHandler(&server.ipfd, acceptTcpHandler) != C_OK) {
@@ -3301,7 +3317,7 @@ void initServer(void) {
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) serverPanic("Unrecoverable error creating server.sofd file event.");
 
-
+    // 管道唤醒消息循环
     /* Register a readable event for the pipe used to awake the event loop
      * when a blocked client in a module needs attention. */
     if (aeCreateFileEvent(server.el, server.module_blocked_pipe[0], AE_READABLE,
@@ -3311,11 +3327,14 @@ void initServer(void) {
                 "blocked clients subsystem.");
     }
 
+    // 注册Sleep的相关处理函数
+    // 每次进入事件循环前server需要执行的操作，以及每次事件循环结束后server需要执行的操作
     /* Register before and after sleep handlers (note this needs to be done
      * before loading persistence since it is used by processEventsWhileBlocked. */
     aeSetBeforeSleepProc(server.el,beforeSleep);
     aeSetAfterSleepProc(server.el,afterSleep);
 
+    // 打开AOF文件
     /* Open the AOF file if needed. */
     if (server.aof_state == AOF_ON) {
         server.aof_fd = open(server.aof_filename,
@@ -3337,16 +3356,21 @@ void initServer(void) {
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 
+    // 开启cluster
     if (server.cluster_enabled) clusterInit();
     replicationScriptCacheInit();
+    // 脚本
     scriptingInit(1);
+    // 慢日志
     slowlogInit();
+    // 延迟monitor
     latencyMonitorInit();
     
     /* Initialize ACL default password if it exists */
     ACLUpdateDefaultUserPassword(server.requirepass);
 }
 
+// 启动3个后台线程：异步释放fd、AOF每秒刷盘、lazyfree
 /* Some steps in server initialization need to be done last (after modules
  * are loaded).
  * Specifically, creation of threads due to a race bug in ld.so, in which
@@ -5909,6 +5933,8 @@ int checkForSentinelMode(int argc, char **argv) {
     return 0;
 }
 
+//会先读取AOF
+//如果没有AOF，则再读取RDB
 /* Function called at startup to load RDB or AOF file in memory. */
 void loadDataFromDisk(void) {
     long long start = ustime();
@@ -6075,6 +6101,8 @@ static int redisSupervisedSystemd(void) {
 #endif
 }
 
+// 是否以守护进程的方式启动
+// upstart、systemd、uto
 int redisIsSupervised(int mode) {
     int ret = 0;
 
@@ -6190,13 +6218,17 @@ int main(int argc, char **argv) {
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
 #endif
+    //设置时区
     setlocale(LC_COLLATE,"");
     tzset(); /* Populates 'timezone' global. */
+    //OOM处理函数
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);
+    //设置随机种子
     srand(time(NULL)^getpid());
     srandom(time(NULL)^getpid());
     gettimeofday(&tv,NULL);
     init_genrand64(((long long) tv.tv_sec * 1000000 + tv.tv_usec) ^ getpid());
+    //CRC初始化
     crc64_init();
 
     /* Store umask value. Because umask(2) only offers a set-and-get API we have
@@ -6208,13 +6240,18 @@ int main(int argc, char **argv) {
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
+    //判断是否运行为烧饼模式
     server.sentinel_mode = checkForSentinelMode(argc,argv);
+    //初始化配置
     initServerConfig();
+    //ACL控制
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
     moduleInitModulesSystem();
+    //tsl初始化
     tlsInit();
 
+    //储存启动参数，以备重启之需
     /* Store the executable path and arguments in a safe place in order
      * to be able to restart the server later. */
     server.executable = getAbsolutePath(argv[0]);
@@ -6222,22 +6259,25 @@ int main(int argc, char **argv) {
     server.exec_argv[argc] = NULL;
     for (j = 0; j < argc; j++) server.exec_argv[j] = zstrdup(argv[j]);
 
+    //哨兵模式
     /* We need to init sentinel right now as parsing the configuration file
      * in sentinel mode will have the effect of populating the sentinel
      * data structures with master nodes to monitor. */
     if (server.sentinel_mode) {
-        initSentinelConfig();
-        initSentinel();
+        initSentinelConfig();        //初始化哨兵的配置
+        initSentinel();              //初始化哨兵模式
     }
 
     /* Check if we need to start in redis-check-rdb/aof mode. We just execute
      * the program main. However the program is part of the Redis executable
      * so that we can easily execute an RDB check on loading errors. */
     if (strstr(argv[0],"redis-check-rdb") != NULL)
-        redis_check_rdb_main(argc,argv,NULL);
+        redis_check_rdb_main(argc,argv,NULL);                //调用redis_check_rdb_main函数检测RDB文件
     else if (strstr(argv[0],"redis-check-aof") != NULL)
-        redis_check_aof_main(argc,argv);
+        redis_check_aof_main(argc,argv);                     //调用redis_check_aof_main函数检测AOF文件
 
+    // 启动参数解析，并对--help和--version进行特殊处理
+    // 加载配置文件，与默认参数、启动参数合并后最终生效
     if (argc >= 2) {
         j = 1; /* First option to parse in argv[] */
         sds options = sdsempty();
@@ -6290,11 +6330,15 @@ int main(int argc, char **argv) {
             j++;
         }
 
+        //加载配置文件
         loadServerConfig(server.configfile, config_from_stdin, options);
         if (server.sentinel_mode) loadSentinelConfigFromQueue();
         sdsfree(options);
     }
+    // 检查哨兵模式配置文件
     if (server.sentinel_mode) sentinelCheckConfigFile();
+    // 是否以守护进程的方式启动
+    // upstart、systemd、uto
     server.supervised = redisIsSupervised(server.supervised_mode);
     int background = server.daemonize && !server.supervised;
     if (background) daemonize();
@@ -6315,6 +6359,7 @@ int main(int argc, char **argv) {
     }
 
     readOOMScoreAdj();
+    //初始化Server，重要！
     initServer();
     if (background || server.pidfile) createPidFile();
     if (server.set_proc_title) redisSetProcTitle(NULL);
@@ -6322,6 +6367,7 @@ int main(int argc, char **argv) {
     checkTcpBacklogSettings();
 
     if (!server.sentinel_mode) {
+        //初始化为普通模式
         /* Things not needed when running in Sentinel mode. */
         serverLog(LL_WARNING,"Server initialized");
     #ifdef __linux__
@@ -6345,8 +6391,11 @@ int main(int argc, char **argv) {
     #endif /* __linux__ */
         moduleInitModulesSystemLast();
         moduleLoadFromQueue();
+        //ACL配置
         ACLLoadUsersAtStartup();
+        //启动后台IO线程
         InitServerLast();
+        //加载硬盘AOF或RDB文件
         loadDataFromDisk();
         if (server.cluster_enabled) {
             if (verifyClusterConfigWithData() == C_ERR) {
@@ -6369,7 +6418,9 @@ int main(int argc, char **argv) {
             redisCommunicateSystemd("READY=1\n");
         }
     } else {
+        //初始化为哨兵模式
         ACLLoadUsersAtStartup();
+        //启动后台IO线程
         InitServerLast();
         sentinelIsRunning();
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
@@ -6383,10 +6434,13 @@ int main(int argc, char **argv) {
         serverLog(LL_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
+    // 绑CPU核心
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
+    // 开启事件循环
     aeMain(server.el);
+    // 退出前关闭事件循环
     aeDeleteEventLoop(server.el);
     return 0;
 }
