@@ -1,5 +1,6 @@
 /* 
  * 事件驱动
+ * 基于kqueue的实现，BSD、MacOS支持
  */
 
 
@@ -73,6 +74,7 @@ static void aeApiFree(aeEventLoop *eventLoop) {
     zfree(state);
 }
 
+//创建事件监听，实际调用了EV_SET+kevent
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
     struct kevent ke;
@@ -102,6 +104,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     }
 }
 
+// 基于kevent的实现，实际调用了kevent
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     int retval, numevents = 0;

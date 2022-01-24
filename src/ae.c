@@ -1,5 +1,7 @@
 /* 
- * 事件驱动
+ * 事件驱动抽象，Reactor模型
+ * 事件分为IO事件和时间事件
+ * 后续实现在evport、kqueue、epoll、select中选择
  */
 
 
@@ -22,26 +24,30 @@
 /* Include the best multiplexing layer supported by this system.
  * The following should be ordered by performances, descending. */
 #ifdef HAVE_EVPORT
-#include "ae_evport.c"
+#include "ae_evport.c"                 //Solaris
 #else
-    #ifdef HAVE_EPOLL
+    #ifdef HAVE_EPOLL                  //Linux
     #include "ae_epoll.c"
     #else
         #ifdef HAVE_KQUEUE
-        #include "ae_kqueue.c"
+        #include "ae_kqueue.c"         //BSD、MacOS
         #else
-        #include "ae_select.c"
+        #include "ae_select.c"         //其实用到了win32_poll，Windows
         #endif
     #endif
 #endif
 
-
+// 创建消息循环
+// 传入参数为server.maxclients+CONFIG_FDSET_INCR
+// maxclients可以在 Redis 的配置文件 redis.conf 中进行定义，默认值是 1000
+// CONFIG_FDSET_INCR=CONFIG_MIN_RESERVED_FDS+96=32+96=128
 aeEventLoop *aeCreateEventLoop(int setsize) {
     aeEventLoop *eventLoop;
     int i;
 
     monotonicInit();    /* just in case the calling app didn't initialize */
 
+    // 创建eventLoop
     if ((eventLoop = zmalloc(sizeof(*eventLoop))) == NULL) goto err;
     eventLoop->events = zmalloc(sizeof(aeFileEvent)*setsize);
     eventLoop->fired = zmalloc(sizeof(aeFiredEvent)*setsize);
@@ -54,7 +60,11 @@ aeEventLoop *aeCreateEventLoop(int setsize) {
     eventLoop->beforesleep = NULL;
     eventLoop->aftersleep = NULL;
     eventLoop->flags = 0;
+
+    //调用具体实现，初始化socket，数据存放到eventLoop.apidata
     if (aeApiCreate(eventLoop) == -1) goto err;
+
+    //不做任何监听
     /* Events with mask == AE_NONE are not set. So let's initialize the
      * vector with it. */
     for (i = 0; i < setsize; i++)
@@ -127,6 +137,7 @@ void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
 
+//创建一个IO事件
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
@@ -134,8 +145,10 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         errno = ERANGE;
         return AE_ERR;
     }
+    //根据传入的文件描述符 fd，获取该描述符关联的 IO 事件指针变量*fe
     aeFileEvent *fe = &eventLoop->events[fd];
 
+    //增加事件，不同平台不同实现
     if (aeApiAddEvent(eventLoop, fd, mask) == -1)
         return AE_ERR;
     fe->mask |= mask;
@@ -303,6 +316,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
     return processed;
 }
 
+//事件捕获与分发
 /* Process every pending time event, then every pending file event
  * (that may be registered by time event callbacks just processed).
  * Without special flags the function sleeps until some file event
@@ -322,6 +336,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 {
     int processed = 0, numevents;
 
+    //没有事件需要处理
     /* Nothing to do? return ASAP */
     if (!(flags & AE_TIME_EVENTS) && !(flags & AE_FILE_EVENTS)) return 0;
 
@@ -331,10 +346,12 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
      * to fire. */
     if (eventLoop->maxfd != -1 ||
         ((flags & AE_TIME_EVENTS) && !(flags & AE_DONT_WAIT))) {
+        //紧急IO事件发生，或紧急时间事件
         int j;
         struct timeval tv, *tvp;
         int64_t usUntilTimer = -1;
 
+        //计算下一个事件还有多少ms
         if (flags & AE_TIME_EVENTS && !(flags & AE_DONT_WAIT))
             usUntilTimer = usUntilEarliestTimer(eventLoop);
 
@@ -343,6 +360,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             tv.tv_usec = usUntilTimer % 1000000;
             tvp = &tv;
         } else {
+            //如果AE_DONT_WAIT，会尽快返回
+            //否则会等待一下
             /* If we have to check for events but need to return
              * ASAP because of AE_DONT_WAIT we need to set the timeout
              * to zero */
@@ -360,17 +379,21 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             tvp = &tv;
         }
 
+        //调用beforesleep
         if (eventLoop->beforesleep != NULL && flags & AE_CALL_BEFORE_SLEEP)
             eventLoop->beforesleep(eventLoop);
 
+        //调用aeApiPoll，不同平台用不同实现
         /* Call the multiplexing API, will return only on timeout or when
          * some event fires. */
         numevents = aeApiPoll(eventLoop, tvp);
 
+        //调用aftersleep
         /* After sleep callback. */
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
 
+        //依次触发aeApiPoll取回的消息
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask;
@@ -390,6 +413,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * before replying to a client. */
             int invert = fe->mask & AE_BARRIER;
 
+            //正常情况下，AE_BARRIER没设置，先处理读消息
             /* Note the "fe->mask & mask & ..." code: maybe an already
              * processed event removed an element that fired and we still
              * didn't processed, so we check if the event is still valid.
@@ -402,6 +426,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 fe = &eventLoop->events[fd]; /* Refresh in case of resize. */
             }
 
+            //处理写消息
             /* Fire the writable event. */
             if (fe->mask & mask & AE_WRITABLE) {
                 if (!fired || fe->wfileProc != fe->rfileProc) {
@@ -410,6 +435,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 }
             }
 
+            //AE_BARRIER设置了，就先处理写消息，再处理读消息
             /* If we have to invert the call, fire the readable event now
              * after the writable one. */
             if (invert) {
@@ -425,6 +451,8 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             processed++;
         }
     }
+
+    //处理非紧急时间事件
     /* Check time events */
     if (flags & AE_TIME_EVENTS)
         processed += processTimeEvents(eventLoop);

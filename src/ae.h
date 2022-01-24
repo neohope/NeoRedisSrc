@@ -2,7 +2,6 @@
  * 事件驱动
  */
 
-
 #ifndef __AE_H__
 #define __AE_H__
 
@@ -41,45 +40,49 @@ typedef int aeTimeProc(struct aeEventLoop *eventLoop, long long id, void *client
 typedef void aeEventFinalizerProc(struct aeEventLoop *eventLoop, void *clientData);
 typedef void aeBeforeSleepProc(struct aeEventLoop *eventLoop);
 
+// IO事件
 /* File event structure */
 typedef struct aeFileEvent {
-    int mask; /* one of AE_(READABLE|WRITABLE|BARRIER) */
-    aeFileProc *rfileProc;
-    aeFileProc *wfileProc;
-    void *clientData;
+    int mask; /* one of AE_(READABLE|WRITABLE|BARRIER) */   //事件类型的掩码
+    aeFileProc *rfileProc;                                  //AE_READABLE的handler
+    aeFileProc *wfileProc;                                  //AE_WRITABLE的handler
+    void *clientData;                                       //client私有数据
 } aeFileEvent;
 
+// 定时事件
 /* Time event structure */
 typedef struct aeTimeEvent {
-    long long id; /* time event identifier. */
-    monotime when;
-    aeTimeProc *timeProc;
-    aeEventFinalizerProc *finalizerProc;
-    void *clientData;
-    struct aeTimeEvent *prev;
-    struct aeTimeEvent *next;
-    int refcount; /* refcount to prevent timer events from being
+    long long id; /* time event identifier. */                           //事件事件id
+    monotime when;                                                       //事件单调时钟的时刻
+    aeTimeProc *timeProc;                                                //定时事件handler
+    aeEventFinalizerProc *finalizerProc;                                 //事件类型的掩码
+    void *clientData;                                                    //client私有数据
+    struct aeTimeEvent *prev;                                            //上一个事件
+    struct aeTimeEvent *next;                                            //下一个事件
+    int refcount; /* refcount to prevent timer events from being         //应用计数
   		   * freed in recursive time event calls. */
 } aeTimeEvent;
 
+//已触发的事件
 /* A fired event */
 typedef struct aeFiredEvent {
     int fd;
     int mask;
 } aeFiredEvent;
 
+// 消息循环
 /* State of an event based program */
 typedef struct aeEventLoop {
-    int maxfd;   /* highest file descriptor currently registered */
-    int setsize; /* max number of file descriptors tracked */
-    long long timeEventNextId;
-    aeFileEvent *events; /* Registered events */
-    aeFiredEvent *fired; /* Fired events */
-    aeTimeEvent *timeEventHead;
+    int maxfd;   /* highest file descriptor currently registered */      //当前最大fd
+    int setsize; /* max number of file descriptors tracked */            //fd最大允许数量
+    long long timeEventNextId;                                           //下一个消息id
+    aeFileEvent *events; /* Registered events */                         //IO事件事件数组
+    aeFiredEvent *fired; /* Fired events */                              //已触发事件数组
+    aeTimeEvent *timeEventHead;                                          //时间事件
     int stop;
-    void *apidata; /* This is used for polling API specific data */
-    aeBeforeSleepProc *beforesleep;
-    aeBeforeSleepProc *aftersleep;
+    void *apidata; /* This is used for polling API specific data */      //和API调用接口相关的数据
+    aeBeforeSleepProc *beforesleep;                                      //进入事件循环流程前执行的函数
+    aeBeforeSleepProc *aftersleep;                                       //退出事件循环流程后执行的函数
     int flags;
 } aeEventLoop;
 

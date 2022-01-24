@@ -103,6 +103,7 @@ client *createClient(connection *conn) {
         connEnableTcpNoDelay(conn);
         if (server.tcpkeepalive)
             connKeepAlive(conn,server.tcpkeepalive);
+        //设置client读取回调函数
         connSetReadHandler(conn, readQueryFromClient);
         connSetPrivateData(conn, c);
     }
@@ -1063,6 +1064,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
         return;
     }
 
+    //创建一个新的client
     /* Create connection and client */
     if ((c = createClient(conn)) == NULL) {
         serverLog(LL_WARNING,
@@ -1076,6 +1078,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
     /* Last chance to keep flags */
     c->flags |= flags;
 
+    //初始化accept
     /* Initiate accept.
      *
      * Note that connAccept() is free to do two things here:
@@ -1095,6 +1098,7 @@ static void acceptCommonHandler(connection *conn, int flags, char *ip) {
     }
 }
 
+//处理连接请求
 void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     int cport, cfd, max = MAX_ACCEPTS_PER_CALL;
     char cip[NET_IP_STR_LEN];
@@ -1103,6 +1107,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(privdata);
 
     while(max--) {
+        //创建已连接套接字cfd
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
@@ -1112,6 +1117,7 @@ void acceptTcpHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
         anetCloexec(cfd);
         serverLog(LL_VERBOSE,"Accepted %s:%d", cip, cport);
+        //处理新连接
         acceptCommonHandler(connCreateAcceptedSocket(cfd),0,cip);
     }
 }
@@ -2128,6 +2134,7 @@ void processInputBuffer(client *c) {
     }
 }
 
+//读取数据回调函数
 void readQueryFromClient(connection *conn) {
     client *c = connGetPrivateData(conn);
     int nread, readlen;
@@ -2160,6 +2167,7 @@ void readQueryFromClient(connection *conn) {
     qblen = sdslen(c->querybuf);
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
+    //读取数据
     nread = connRead(c->conn, c->querybuf+qblen, readlen);
     if (nread == -1) {
         if (connGetState(conn) == CONN_STATE_CONNECTED) {

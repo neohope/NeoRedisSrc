@@ -1,5 +1,6 @@
 /* 
  * 事件驱动
+ * 基于evport的实现，BSD、Solaris支持
  */
 
 #include <assert.h>
@@ -126,6 +127,7 @@ static int aeApiAssociate(const char *where, int portfd, int fd, int mask) {
     return rv;
 }
 
+//创建事件监听，实际调用了port_associate
 static int aeApiAddEvent(aeEventLoop *eventLoop, int fd, int mask) {
     aeApiState *state = eventLoop->apidata;
     int fullmask, pfd;
@@ -217,6 +219,7 @@ static void aeApiDelEvent(aeEventLoop *eventLoop, int fd, int mask) {
     }
 }
 
+// 基于evport的实现，实际调用了port_associate
 static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
     aeApiState *state = eventLoop->apidata;
     struct timespec timeout, *tsp;

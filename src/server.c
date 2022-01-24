@@ -2336,6 +2336,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     if (zmalloc_used > server.stat_peak_memory)
         server.stat_peak_memory = zmalloc_used;
 
+    //阻塞式处理事件
     /* Just call a subset of vital functions in case we are re-entering
      * the event loop from processEventsWhileBlocked(). Note that in this
      * case we keep track of the number of events we are processing, since
@@ -2351,6 +2352,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
         return;
     }
 
+    //非阻塞式处理事件
     /* Handle precise timeouts of blocked clients. */
     handleBlockedClientsTimeout();
 
@@ -2991,7 +2993,7 @@ void closeSocketListeners(socketFds *sfd) {
     sfd->count = 0;
 }
 
-//为每一个监听的IP设置连接事件的处理函数acceptTcpHandler
+//为每一个监听的IP，设置事件的处理函数acceptTcpHandler，用于接收请求
 /* Create an event handler for accepting new connections in TCP or TLS domain sockets.
  * This works atomically for all socket fds */
 int createSocketAcceptHandler(socketFds *sfd, aeFileProc *accept_handler) {
@@ -3184,7 +3186,7 @@ void initServer(void) {
     //单调时钟
     const char *clk_msg = monotonicInit();
     serverLog(LL_NOTICE, "monotonic clock: %s", clk_msg);
-    //创建消息循环
+    //创建消息循环，重要！
     server.el = aeCreateEventLoop(server.maxclients+CONFIG_FDSET_INCR);
     if (server.el == NULL) {
         serverLog(LL_WARNING,
@@ -3306,6 +3308,7 @@ void initServer(void) {
     }
 
     // 创建TCP及Unix的Socket处理函数
+    // 最开始监听的 IO 事件是可读事件，对应于客户端的连接请求
     /* Create an event handler for accepting new connections in TCP and Unix
      * domain sockets. */
     if (createSocketAcceptHandler(&server.ipfd, acceptTcpHandler) != C_OK) {
@@ -6438,7 +6441,7 @@ int main(int argc, char **argv) {
     redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
-    // 开启事件循环
+    // 开启事件循环，重要！
     aeMain(server.el);
     // 退出前关闭事件循环
     aeDeleteEventLoop(server.el);
