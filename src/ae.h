@@ -49,17 +49,17 @@ typedef struct aeFileEvent {
     void *clientData;                                       //client私有数据
 } aeFileEvent;
 
-// 定时事件
+// 定时事件，以链表形式组织
 /* Time event structure */
 typedef struct aeTimeEvent {
     long long id; /* time event identifier. */                           //事件事件id
     monotime when;                                                       //事件单调时钟的时刻
     aeTimeProc *timeProc;                                                //定时事件handler
-    aeEventFinalizerProc *finalizerProc;                                 //事件类型的掩码
+    aeEventFinalizerProc *finalizerProc;                                 //事件结束handler
     void *clientData;                                                    //client私有数据
     struct aeTimeEvent *prev;                                            //上一个事件
     struct aeTimeEvent *next;                                            //下一个事件
-    int refcount; /* refcount to prevent timer events from being         //应用计数
+    int refcount; /* refcount to prevent timer events from being         //引用计数
   		   * freed in recursive time event calls. */
 } aeTimeEvent;
 

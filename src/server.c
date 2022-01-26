@@ -1998,6 +1998,8 @@ void cronUpdateMemoryStats() {
     }
 }
 
+//服务器定时事件Handler
+//run_with_period用到了cronloops及事件频率
 /* This is our timer interrupt, called server.hz times per second.
  * Here is where we do a number of things that need to be done asynchronously.
  * For instance:
@@ -2016,7 +2018,6 @@ void cronUpdateMemoryStats() {
  * so in order to throttle execution of things we want to do less frequently
  * a macro is used: run_with_period(milliseconds) { .... }
  */
-
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     int j;
     UNUSED(eventLoop);
@@ -2045,6 +2046,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
+    //统计Metric
     run_with_period(100) {
         long long stat_net_input_bytes, stat_net_output_bytes;
         atomicGet(server.stat_net_input_bytes, stat_net_input_bytes);
@@ -2071,8 +2073,10 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     unsigned int lruclock = getLRUClock();
     atomicSet(server.lruclock,lruclock);
 
+    //更新内存状态
     cronUpdateMemoryStats();
 
+    //处理进程结束信号
     /* We received a SIGTERM, shutting down here in a safe way, as it is
      * not ok doing so inside the signal handler. */
     if (server.shutdown_asap) {
@@ -2081,6 +2085,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         server.shutdown_asap = 0;
     }
 
+    //输出DB信息
     /* Show some info about non-empty databases */
     if (server.verbosity <= LL_VERBOSE) {
         run_with_period(5000) {
@@ -2097,6 +2102,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
+    //输出clients信息
     /* Show information about connected clients */
     if (!server.sentinel_mode) {
         run_with_period(5000) {
@@ -2108,12 +2114,15 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         }
     }
 
+    //执行客户端的异步操作
     /* We need to do a few operations on clients asynchronously. */
     clientsCron();
 
+    //执行数据库的后台操作
     /* Handle background operations on Redis databases. */
     databasesCron();
 
+    //AOF rewrite
     /* Start a scheduled AOF rewrite if this was requested by the user while
      * a BGSAVE was in progress. */
     if (!hasActiveChildProcess() &&
@@ -2122,12 +2131,15 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         rewriteAppendOnlyFileBackground();
     }
 
+    //后台操作 或 AOF rewrite 是否在进行
     /* Check if a background saving or AOF rewrite in progress terminated. */
     if (hasActiveChildProcess() || ldbPendingChildren())
     {
+        //继续进行
         run_with_period(1000) receiveChildInfo();
         checkChildrenDone();
     } else {
+        //开始处理
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now. */
         for (j = 0; j < server.saveparamslen; j++) {
@@ -2152,6 +2164,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             }
         }
 
+        //AOF后台重写
         /* Trigger an AOF rewrite if needed. */
         if (server.aof_state == AOF_ON &&
             !hasActiveChildProcess() &&
@@ -2167,16 +2180,19 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             }
         }
     }
+
+    //dict扩缩容
     /* Just for the sake of defensive programming, to avoid forgeting to
      * call this function when need. */
     updateDictResizePolicy();
 
-
+    // flash AOF
     /* AOF postponed flush: Try at every cron cycle if the slow fsync
      * completed. */
     if (server.aof_state == AOF_ON && server.aof_flush_postponed_start)
         flushAppendOnlyFile(0);
 
+    //重试flash AOF
     /* AOF write errors: in this case we have a buffer to flush as well and
      * clear the AOF error in case of success to make the DB writable again,
      * however to try every second is enough in case of 'hz' is set to
@@ -2186,9 +2202,11 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             flushAppendOnlyFile(0);
     }
 
+    //检查paused客户端的状态
     /* Clear the paused clients state if needed. */
     checkClientPauseTimeoutAndReturnIfPaused();
 
+    //检查传输异常
     /* Replication cron function -- used to reconnect to master,
      * detect transfer failures, start background RDB transfers and so forth. 
      * 
@@ -2222,6 +2240,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * the operation even if completely idle. */
     if (server.tracking_clients) trackingLimitUsedSlots();
 
+    //RDB保存
     /* Start a scheduled BGSAVE if the corresponding flag is set. This is
      * useful when we are forced to postpone a BGSAVE because an AOF
      * rewrite is in progress.
@@ -2240,6 +2259,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
             server.rdb_bgsave_scheduled = 0;
     }
 
+    //触发cron loop modules事件
     /* Fire the cron loop modules event. */
     RedisModuleCronLoopV1 ei = {REDISMODULE_CRON_LOOP_VERSION,server.hz};
     moduleFireServerEvent(REDISMODULE_EVENT_CRON_LOOP,
@@ -2344,8 +2364,10 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
      * events to handle. */
     if (ProcessingEventsWhileBlocked) {
         uint64_t processed = 0;
+        //消息读取
         processed += handleClientsWithPendingReadsUsingThreads();
         processed += tlsProcessPendingData();
+        //消息写入
         processed += handleClientsWithPendingWrites();
         processed += freeClientsInAsyncFreeQueue();
         server.events_processed_while_blocked += processed;
@@ -2356,6 +2378,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     /* Handle precise timeouts of blocked clients. */
     handleBlockedClientsTimeout();
 
+    //消息读取
     /* We should handle pending reads clients ASAP after event loop. */
     handleClientsWithPendingReadsUsingThreads();
 
@@ -2421,6 +2444,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     if (server.aof_state == AOF_ON)
         flushAppendOnlyFile(0);
 
+    //消息写入
     /* Handle writes with pending output buffers. */
     handleClientsWithPendingWritesUsingThreads();
 
@@ -3671,6 +3695,7 @@ void slowlogPushCurrentCommand(client *c, struct redisCommand *cmd, ustime_t dur
     slowlogPushEntryIfNeeded(c,argv,argc,duration);
 }
 
+//执行具体的command
 /* Call() is the core of Redis execution of a command.
  *
  * The following flags can be passed:
@@ -3956,6 +3981,7 @@ static int cmdHasMovableKeys(struct redisCommand *cmd) {
             cmd->flags & CMD_MODULE_GETKEYS;
 }
 
+//执行command
 /* If this function gets called we already read a whole
  * command, arguments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
@@ -3987,6 +4013,7 @@ int processCommand(client *c) {
         return C_ERR;
     }
 
+    //查询命令
     /* Now lookup the command and check ASAP about trivial error conditions
      * such as wrong arity, bad command name and so forth. */
     c->cmd = c->lastcmd = lookupCommand(c->argv[0]->ptr);
@@ -4006,6 +4033,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //判断command类型
     int is_read_command = (c->cmd->flags & CMD_READONLY) ||
                            (c->cmd->proc == execCommand && (c->mstate.cmd_flags & CMD_READONLY));
     int is_write_command = (c->cmd->flags & CMD_WRITE) ||
@@ -4028,6 +4056,7 @@ int processCommand(client *c) {
         }
     }
 
+    //权限判断
     /* Check if the user can run this command according to the current
      * ACLs. */
     int acl_errpos;
@@ -4243,6 +4272,7 @@ int processCommand(client *c) {
         return C_OK;       
     }
 
+    //执行具体的command
     /* Exec the command */
     if (c->flags & CLIENT_MULTI &&
         c->cmd->proc != execCommand && c->cmd->proc != discardCommand &&

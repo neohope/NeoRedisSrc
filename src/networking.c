@@ -1586,6 +1586,7 @@ void sendReplyToClient(connection *conn) {
     writeToClient(c,1);
 }
 
+// 消息写入
 /* This function is called just before entering the event loop, in the hope
  * we can just write the replies to the client output buffer without any
  * need to use a syscall in order to install the writable event handler,
@@ -1608,9 +1609,11 @@ int handleClientsWithPendingWrites(void) {
         /* Don't write to clients that are going to be closed anyway. */
         if (c->flags & CLIENT_CLOSE_ASAP) continue;
 
+        //缓存写入Clinet
         /* Try to write buffers to the client socket. */
         if (writeToClient(c,0) == C_ERR) continue;
 
+        //如果数据没有写完，继续异步写入
         /* If after the synchronous writes above we still have data to
          * output to the client, we need to install the writable handler. */
         if (clientHasPendingReplies(c)) {
@@ -1625,6 +1628,9 @@ int handleClientsWithPendingWrites(void) {
             {
                 ae_barrier = 1;
             }
+
+            //connSetWriteHandlerWithBarrier会阻塞其他读消息，直到完成，才会释放Barrier
+            //sendReplyToClient最终也是调用了writeToClient
             if (connSetWriteHandlerWithBarrier(c->conn, sendReplyToClient, ae_barrier) == C_ERR) {
                 freeClientAsync(c);
             }
@@ -1966,6 +1972,7 @@ int processMultibulkBuffer(client *c) {
     return C_ERR;
 }
 
+//执行清理工作
 /* Perform necessary tasks after a command was executed:
  *
  * 1. The client is reset unless there are reasons to avoid doing it.
@@ -2005,6 +2012,7 @@ void commandProcessed(client *c) {
     }
 }
 
+//执行command
 /* This function calls processCommand(), but also performs a few sub tasks
  * for the client that are useful in that context:
  *
@@ -2049,6 +2057,7 @@ int processPendingCommandsAndResetClient(client *c) {
     return C_OK;
 }
 
+//判断buffer中是哪种command
 /* This function is called every time, in the client structure 'c', there is
  * more query buffer to process, because we read more data from the socket
  * or because a client was blocked and later reactivated, so there could be
@@ -2076,6 +2085,7 @@ void processInputBuffer(client *c) {
          * The same applies for clients we want to terminate ASAP. */
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
+        //多行还是单行
         /* Determine request type when unknown. */
         if (!c->reqtype) {
             if (c->querybuf[c->qb_pos] == '*') {
@@ -2085,6 +2095,7 @@ void processInputBuffer(client *c) {
             }
         }
 
+        //Gopher
         if (c->reqtype == PROTO_REQ_INLINE) {
             if (processInlineBuffer(c) != C_OK) break;
             /* If the Gopher mode and we got zero or one argument, process
@@ -2117,6 +2128,7 @@ void processInputBuffer(client *c) {
                 break;
             }
 
+            //执行command
             /* We are finally ready to execute the command. */
             if (processCommandAndResetClient(c) == C_ERR) {
                 /* If the client is no longer valid, we avoid exiting this
@@ -3579,6 +3591,7 @@ int stopThreadedIOIfNeeded(void) {
     }
 }
 
+//异步给client写数据，实际上也是用了
 int handleClientsWithPendingWritesUsingThreads(void) {
     int processed = listLength(server.clients_pending_write);
     if (processed == 0) return 0; /* Return ASAP if there are no clients. */
@@ -3613,6 +3626,7 @@ int handleClientsWithPendingWritesUsingThreads(void) {
         item_id++;
     }
 
+    //异步写入
     /* Give the start condition to the waiting threads, by setting the
      * start condition atomic var. */
     io_threads_op = IO_THREADS_OP_WRITE;
@@ -3629,6 +3643,7 @@ int handleClientsWithPendingWritesUsingThreads(void) {
     }
     listEmpty(io_threads_list[0]);
 
+    //等待全部线程完成
     /* Wait for all the other threads to end their work. */
     while(1) {
         unsigned long pending = 0;

@@ -189,6 +189,10 @@ int aeGetFileEvents(aeEventLoop *eventLoop, int fd) {
     return fe->mask;
 }
 
+//milliseconds：时间事件的触发时间距离当前时间的时长，是用毫秒表示的
+//proc：时间事件handler
+//clientData：私有数据
+//finalizerProc：事件结束handler
 long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
         aeTimeProc *proc, void *clientData,
         aeEventFinalizerProc *finalizerProc)
@@ -199,7 +203,7 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     te = zmalloc(sizeof(*te));
     if (te == NULL) return AE_ERR;
     te->id = id;
-    te->when = getMonotonicUs() + milliseconds * 1000;
+    te->when = getMonotonicUs() + milliseconds * 1000;    //计算时间事件具体的触发时间戳
     te->timeProc = proc;
     te->finalizerProc = finalizerProc;
     te->clientData = clientData;
@@ -249,6 +253,7 @@ static int64_t usUntilEarliestTimer(aeEventLoop *eventLoop) {
     return (now >= earliest->when) ? 0 : earliest->when - now;
 }
 
+//依次从链表取出事件，并进行处理
 /* Process time events */
 static int processTimeEvents(aeEventLoop *eventLoop) {
     int processed = 0;
@@ -261,6 +266,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
     while(te) {
         long long id;
 
+        //删除AE_DELETED_EVENT_ID事件
         /* Remove events scheduled for deletion. */
         if (te->id == AE_DELETED_EVENT_ID) {
             aeTimeEvent *next = te->next;
@@ -286,6 +292,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             continue;
         }
 
+        //未到处理事件，再看下一项
         /* Make sure we don't process time events created by time events in
          * this iteration. Note that this check is currently useless: we always
          * add new timers on the head, however if we change the implementation
@@ -296,6 +303,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             continue;
         }
 
+        //触发处理函数
         if (te->when <= now) {
             int retval;
 
