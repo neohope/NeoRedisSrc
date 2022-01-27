@@ -209,7 +209,7 @@ void emptyDbAsync(redisDb *db) {
     db->dict = dictCreate(&dbDictType,NULL);
     db->expires = dictCreate(&dbExpiresDictType,NULL);
     atomicIncr(lazyfree_objects,dictSize(oldht1));
-    bioCreateLazyFreeJob(lazyfreeFreeDatabase,2,oldht1,oldht2);
+    (lazyfreeFreeDatabase,2,oldht1,oldht2);
 }
 
 /* Release the radix tree mapping Redis Cluster keys to slots asynchronously. */

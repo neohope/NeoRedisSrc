@@ -3435,15 +3435,15 @@ void processEventsWhileBlocked(void) {
 #define IO_THREADS_OP_READ 0
 #define IO_THREADS_OP_WRITE 1
 
-pthread_t io_threads[IO_THREADS_MAX_NUM];
-pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];
-redisAtomic unsigned long io_threads_pending[IO_THREADS_MAX_NUM];
+pthread_t io_threads[IO_THREADS_MAX_NUM];                                     //保存每个 IO 线程的描述符
+pthread_mutex_t io_threads_mutex[IO_THREADS_MAX_NUM];                         //线程互斥锁
+redisAtomic unsigned long io_threads_pending[IO_THREADS_MAX_NUM];             //等待每个 IO 线程处理的客户端个数
 int io_threads_op;      /* IO_THREADS_OP_WRITE or IO_THREADS_OP_READ. */
 
 /* This is the list of clients each thread will serve when threaded I/O is
  * used. We spawn io_threads_num-1 threads, since one is the main thread
  * itself. */
-list *io_threads_list[IO_THREADS_MAX_NUM];
+list *io_threads_list[IO_THREADS_MAX_NUM];                                    //每个 IO 线程要处理的客户端
 
 static inline unsigned long getIOPendingCount(int i) {
     unsigned long count = 0;
@@ -3501,10 +3501,13 @@ void *IOThreadMain(void *myid) {
     }
 }
 
+//初始化IO线程
 /* Initialize the data structures needed for threaded I/O. */
 void initThreadedIO(void) {
+    //线程不活跃
     server.io_threads_active = 0; /* We start with threads not active. */
 
+    //单线程运行
     /* Don't spawn any thread if the user selected a single thread:
      * we'll handle I/O directly from the main thread. */
     if (server.io_threads_num == 1) return;
@@ -3515,22 +3518,23 @@ void initThreadedIO(void) {
         exit(1);
     }
 
+    //合理的IO线程数量，创建IO线程
     /* Spawn and initialize the I/O threads. */
     for (int i = 0; i < server.io_threads_num; i++) {
         /* Things we do for all the threads including the main thread. */
         io_threads_list[i] = listCreate();
-        if (i == 0) continue; /* Thread 0 is the main thread. */
+        if (i == 0) continue; /* Thread 0 is the main thread. */                     //编号为0的线程是主IO线程
 
         /* Things we do only for the additional threads. */
         pthread_t tid;
-        pthread_mutex_init(&io_threads_mutex[i],NULL);
-        setIOPendingCount(i, 0);
+        pthread_mutex_init(&io_threads_mutex[i],NULL);                               //初始化io_threads_mutex数组
+        setIOPendingCount(i, 0);                                                     //初始化io_threads_pending数组
         pthread_mutex_lock(&io_threads_mutex[i]); /* Thread will be stopped. */
-        if (pthread_create(&tid,NULL,IOThreadMain,(void*)(long)i) != 0) {
+        if (pthread_create(&tid,NULL,IOThreadMain,(void*)(long)i) != 0) {            //调用pthread_create函数创建IO线程，线程运行函数为IOThreadMain
             serverLog(LL_WARNING,"Fatal: Can't initialize IO thread.");
             exit(1);
         }
-        io_threads[i] = tid;
+        io_threads[i] = tid;                                                         //初始化io_threads数组，设置值为线程标识
     }
 }
 

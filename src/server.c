@@ -3405,7 +3405,7 @@ void initServer(void) {
  * see: https://sourceware.org/bugzilla/show_bug.cgi?id=19329 */
 void InitServerLast() {
     bioInit();         //开启后台线程
-    initThreadedIO();
+    initThreadedIO();  //初始化IO线程
     set_jemalloc_bg_thread(server.jemalloc_bg_thread);
     server.initial_memory_usage = zmalloc_used_memory();
 }
@@ -5606,12 +5606,15 @@ void createPidFile(void) {
     }
 }
 
+// 以守护进程的方式启动
+// upstart、systemd、auto
 void daemonize(void) {
     int fd;
 
-    if (fork() != 0) exit(0); /* parent exits */
-    setsid(); /* create a new session */
+    if (fork() != 0) exit(0); /* parent exits */          //fork无论成败，则父进程退出
+    setsid(); /* create a new session */                  //创建新的session
 
+    //标准输入、标准输出和标准错误输出，重新定向到 /dev/null
     /* Every output goes to /dev/null. If Redis is daemonized but
      * the 'logfile' is set to 'stdout' in the configuration file
      * it will not log at all. */
@@ -6371,7 +6374,7 @@ int main(int argc, char **argv) {
     // 检查哨兵模式配置文件
     if (server.sentinel_mode) sentinelCheckConfigFile();
     // 是否以守护进程的方式启动
-    // upstart、systemd、uto
+    // upstart、systemd、auto
     server.supervised = redisIsSupervised(server.supervised_mode);
     int background = server.daemonize && !server.supervised;
     if (background) daemonize();
