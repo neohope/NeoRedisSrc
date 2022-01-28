@@ -3180,8 +3180,8 @@ void initServer(void) {
     server.clients_to_close = listCreate();                           //等待异步关闭的client列表
     server.slaves = listCreate();                                     //slave列表
     server.monitors = listCreate();                                   //monitor列表
-    server.clients_pending_write = listCreate();
-    server.clients_pending_read = listCreate();
+    server.clients_pending_write = listCreate();                      //待写回数据的客户端，涉及IO线程
+    server.clients_pending_read = listCreate();                       //待读取数据的客户端，涉及IO线程
     server.clients_timeout_table = raxNew();                          //被block的client基数树
     server.replication_allowed = 1;                                   //分片
     server.slaveseldb = -1;                                           //忽略第一次master选择，也就是SELECT命令
