@@ -3475,6 +3475,7 @@ int populateCommandTableParseFlags(struct redisCommand *c, char *strflags) {
     return C_OK;
 }
 
+//命令名称和对应redisCommand放入commands
 /* Populates the Redis Command Table starting from the hard coded list
  * we have on top of server.c file. */
 void populateCommandTable(void) {
@@ -3695,7 +3696,7 @@ void slowlogPushCurrentCommand(client *c, struct redisCommand *cmd, ustime_t dur
     slowlogPushEntryIfNeeded(c,argv,argc,duration);
 }
 
-//执行具体的command
+//执行具体的command，核心函数
 /* Call() is the core of Redis execution of a command.
  *
  * The following flags can be passed:
@@ -3756,8 +3757,11 @@ void call(client *c, int flags) {
         updateCachedTime(0);
     }
 
+    //开始计时
     elapsedStart(&call_timer);
+    //调用对应函数
     c->cmd->proc(c);
+    //计算耗时
     const long duration = elapsedUs(call_timer);
     c->duration = duration;
     dirty = server.dirty-dirty;
@@ -3771,6 +3775,7 @@ void call(client *c, int flags) {
         real_cmd->failed_calls++;
     }
 
+    //关闭连接
     /* After executing command, we will close the client after writing entire
      * reply if it is set 'CLIENT_CLOSE_AFTER_COMMAND' flag. */
     if (c->flags & CLIENT_CLOSE_AFTER_COMMAND) {
@@ -3778,6 +3783,7 @@ void call(client *c, int flags) {
         c->flags |= CLIENT_CLOSE_AFTER_REPLY;
     }
 
+    //排除部分EVAL执行耗时
     /* When EVAL is called loading the AOF we don't want commands called
      * from Lua to go into the slowlog or to populate statistics. */
     if (server.loading && c->flags & CLIENT_LUA)
@@ -3806,6 +3812,7 @@ void call(client *c, int flags) {
         latencyAddSampleIfNeeded(latency_event,duration/1000);
     }
 
+    //慢命令日志
     /* Log the command into the Slow log if needed.
      * If the client is blocked we will handle slowlog when it is unblocked. */
     if ((flags & CMD_CALL_SLOWLOG) && !(c->flags & CLIENT_BLOCKED))
@@ -3862,6 +3869,7 @@ void call(client *c, int flags) {
             propagate(c->cmd,c->db->id,c->argv,c->argc,propagate_flags);
     }
 
+    //还原replication状态位
     /* Restore the old replication flags, since call() can be executed
      * recursively. */
     c->flags &= ~(CLIENT_FORCE_AOF|CLIENT_FORCE_REPL|CLIENT_PREVENT_PROP);
@@ -3910,12 +3918,14 @@ void call(client *c, int flags) {
     }
     server.also_propagate = prev_also_propagate;
 
+    //一个事务执行完毕，暂定
     /* Client pause takes effect after a transaction has finished. This needs
      * to be located after everything is propagated. */
     if (!server.in_exec && server.client_pause_in_transaction) {
         server.client_pause_in_transaction = 0;
     }
 
+    //记录client key缓存
     /* If the client has keys tracking enabled for client side caching,
      * make sure to remember the keys it fetched via this command. */
     if (c->cmd->flags & CMD_READONLY) {
@@ -3932,6 +3942,7 @@ void call(client *c, int flags) {
     server.stat_numcommands++;
     prev_err_count = server.stat_total_error_replies;
 
+    //记录峰值内存
     /* Record peak memory after each command and before the eviction that runs
      * before the next command. */
     size_t zmalloc_used = zmalloc_used_memory();
@@ -4001,8 +4012,10 @@ int processCommand(client *c) {
         serverAssert(!server.in_eval);
     }
 
+    //将Redis命令替换成module中想要替换的命令
     moduleCallCommandFilters(c);
 
+    //退出命令
     /* The QUIT command is handled separately. Normal command procs will
      * go through checking for replication and QUIT will cause trouble
      * when FORCE_REPLICATION is enabled and would be implemented in
@@ -4047,6 +4060,7 @@ int processCommand(client *c) {
     int is_may_replicate_command = (c->cmd->flags & (CMD_WRITE | CMD_MAY_REPLICATE)) ||
                                    (c->cmd->proc == execCommand && (c->mstate.cmd_flags & (CMD_WRITE | CMD_MAY_REPLICATE)));
 
+    //认证命令
     if (authRequired(c)) {
         /* AUTH and HELLO and no auth commands are valid even in
          * non-authenticated state. */
@@ -4086,6 +4100,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //CLUSTER模式，重定向命令
     /* If cluster is enabled perform the cluster redirection here.
      * However we don't perform the redirection if:
      * 1) The sender of this command is our master.
@@ -4113,6 +4128,7 @@ int processCommand(client *c) {
         }
     }
 
+    //处理内存情况
     /* Handle the maxmemory directive.
      *
      * Note that we do not want to reclaim memory if we are here re-entering
@@ -4155,6 +4171,7 @@ int processCommand(client *c) {
      * caching metadata. */
     if (server.tracking_clients) trackingLimitUsedSlots();
 
+    //硬盘问题，MASTER节点拒绝写入命令
     /* Don't accept write commands if there are problems persisting on disk
      * and if this is a master instance. */
     int deny_write_type = writeCommandsDeniedByDiskError();
@@ -4171,6 +4188,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //SLAVE节点不足，MASTER节点拒绝写入命令
     /* Don't accept write commands if there are not enough good slaves and
      * user configured the min-slaves-to-write option. */
     if (server.masterhost == NULL &&
@@ -4183,6 +4201,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //只读SLAVE节点拒绝写入命令
     /* Don't accept write commands if this is a read only slave. But
      * accept write commands if this is our master. */
     if (server.masterhost && server.repl_slave_ro &&
@@ -4193,6 +4212,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //RESP2限制命令类型
     /* Only allow a subset of commands in the context of Pub/Sub if the
      * connection is in RESP2 mode. With RESP3 there are no limits. */
     if ((c->flags & CLIENT_PUBSUB && c->resp == 2) &&
@@ -4209,6 +4229,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //当SLAVE节点断开后，拒绝执行多数命令
     /* Only allow commands with flag "t", such as INFO, SLAVEOF and so on,
      * when slave-serve-stale-data is no and we are a slave with a broken
      * link with master. */
@@ -4220,6 +4241,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //Server初始化，拒绝执行
     /* Loading DB? Return an error if the command has not the
      * CMD_LOADING flag. */
     if (server.loading && is_denyloading_command) {
@@ -4227,6 +4249,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //Lua脚本太慢，拒绝执行
     /* Lua script too slow? Only allow a limited number of commands.
      * Note that we need to allow the transactions commands, otherwise clients
      * sending a transaction with pipelining without error checking, may have
@@ -4253,6 +4276,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //SLAVE不能访问keyspace
     /* Prevent a replica from sending commands that access the keyspace.
      * The main objective here is to prevent abuse of client pause check
      * from which replicas are exempt. */
@@ -4261,6 +4285,7 @@ int processCommand(client *c) {
         return C_OK;
     }
 
+    //Server处于Pause状态
     /* If the server is paused, block the client until
      * the pause has ended. Replicas are never paused. */
     if (!(c->flags & CLIENT_SLAVE) && 
@@ -4279,9 +4304,12 @@ int processCommand(client *c) {
         c->cmd->proc != multiCommand && c->cmd->proc != watchCommand &&
         c->cmd->proc != resetCommand)
     {
+        //如果客户端有CLIENT_MULTI标记，并且当前不是exec、discard、multi和watch命令
+        //Redis事务，将命令入队保存，等待后续一起处理
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
+        //执行命令
         call(c,CMD_CALL_FULL);
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
@@ -6276,7 +6304,7 @@ int main(int argc, char **argv) {
     uint8_t hashseed[16];
     getRandomBytes(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed(hashseed);
-    //判断是否运行为烧饼模式
+    //判断是否运行为哨兵模式
     server.sentinel_mode = checkForSentinelMode(argc,argv);
     //初始化配置
     initServerConfig();

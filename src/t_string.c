@@ -47,9 +47,11 @@ static int checkStringLength(client *c, long long size) {
 #define OBJ_PXAT (1<<7)            /* Set if timestamp in ms is given */
 #define OBJ_PERSIST (1<<8)         /* Set if we need to remove the ttl */
 
+//执行SET命令
 void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire, int unit, robj *ok_reply, robj *abort_reply) {
     long long milliseconds = 0, when = 0; /* initialized to avoid any harmness warning */
 
+    //过期时间参数判断
     if (expire) {
         if (getLongLongFromObjectOrReply(c, expire, &milliseconds, NULL) != C_OK)
             return;
@@ -69,6 +71,7 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
         }
     }
 
+    //key已存在，但提供了NX或EX桉树
     if ((flags & OBJ_SET_NX && lookupKeyWrite(c->db,key) != NULL) ||
         (flags & OBJ_SET_XX && lookupKeyWrite(c->db,key) == NULL))
     {
@@ -76,13 +79,16 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
         return;
     }
 
+    //getset命令
     if (flags & OBJ_SET_GET) {
         if (getGenericCommand(c) == C_ERR) return;
     }
 
+    //进行SET
     genericSetKey(c,c->db,key, val,flags & OBJ_KEEPTTL,1);
     server.dirty++;
     notifyKeyspaceEvent(NOTIFY_STRING,"set",key,c->db->id);
+    //过期时间
     if (expire) {
         setExpire(c,c->db,key,when);
         notifyKeyspaceEvent(NOTIFY_GENERIC,"expire",key,c->db->id);
@@ -101,6 +107,8 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
         rewriteClientCommandVector(c,5,shared.set,key,val,exp,millisecondObj);
         decrRefCount(millisecondObj);
     }
+
+    //写返回值给client
     if (!(flags & OBJ_SET_GET)) {
         addReply(c, ok_reply ? ok_reply : shared.ok);
     }
@@ -127,6 +135,8 @@ void setGenericCommand(client *c, int flags, robj *key, robj *val, robj *expire,
 
 #define COMMAND_GET 0
 #define COMMAND_SET 1
+
+//命令参数解析
 /*
  * The parseExtendedStringArgumentsOrReply() function performs the common validation for extended
  * string arguments used in SET and GET command.
@@ -227,6 +237,7 @@ int parseExtendedStringArgumentsOrReply(client *c, int *flags, int *unit, robj *
     return C_OK;
 }
 
+// SET命令
 /* SET key value [NX] [XX] [KEEPTTL] [GET] [EX <seconds>] [PX <milliseconds>]
  *     [EXAT <seconds-timestamp>][PXAT <milliseconds-timestamp>] */
 void setCommand(client *c) {
@@ -234,11 +245,13 @@ void setCommand(client *c) {
     int unit = UNIT_SECONDS;
     int flags = OBJ_NO_FLAGS;
 
+    //解析额外参数
     if (parseExtendedStringArgumentsOrReply(c,&flags,&unit,&expire,COMMAND_SET) != C_OK) {
         return;
     }
 
     c->argv[2] = tryObjectEncoding(c->argv[2]);
+    //执行命令
     setGenericCommand(c,flags,c->argv[1],c->argv[2],expire,unit,NULL,NULL);
 }
 

@@ -401,7 +401,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         if (eventLoop->aftersleep != NULL && flags & AE_CALL_AFTER_SLEEP)
             eventLoop->aftersleep(eventLoop);
 
-        //依次触发aeApiPoll取回的消息
+        //依次触发aeApiPoll取回的消息，其实对于多个不同客户端，这里做了串行化处理
         for (j = 0; j < numevents; j++) {
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
             int mask = eventLoop->fired[j].mask;

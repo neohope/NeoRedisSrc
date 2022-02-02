@@ -179,6 +179,7 @@ client *createClient(connection *conn) {
     return c;
 }
 
+//加入到clients_pending_write
 /* This function puts the client in the queue of clients that should write
  * their output buffers to the socket. Note that it does not *yet* install
  * the write handler, to start clients are put in a queue of clients that need
@@ -207,7 +208,7 @@ void clientInstallWriteHandler(client *c) {
     }
 }
 
-//判断是否推迟执行客户端写操作
+//准备执行客户端写操作
 /* This function is called every time we are going to transmit new data
  * to the client. The behavior is the following:
  *
@@ -248,7 +249,7 @@ int prepareClientToWrite(client *c) {
 
     if (!c->conn) return C_ERR; /* Fake client for AOF loading. */
 
-    //如果当前客户端没有待写回数据，调用clientInstallWriteHandler函数加入到读取队列
+    //如果当前客户端没有待写回数据，调用clientInstallWriteHandler函数加入到写队列clients_pending_write
     /* Schedule the client to write the output buffers to the socket, unless
      * it should already be setup to do so (it has already pending data).
      *
@@ -335,20 +336,20 @@ void _addReplyProtoToList(client *c, const char *s, size_t len) {
 /* Add the object 'obj' string representation to the client output buffer. */
 void addReply(client *c, robj *obj) {
 
-    //判断是否推迟执行客户端写操作
+    //准备执行客户端写操作
     if (prepareClientToWrite(c) != C_OK) return;
 
     if (sdsEncodedObject(obj)) {
-        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
-            _addReplyProtoToList(c,obj->ptr,sdslen(obj->ptr));
+        if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)               //将要返回的结果添加到客户端的输出缓冲区中
+            _addReplyProtoToList(c,obj->ptr,sdslen(obj->ptr));                    //将要返回的结果添加到客户端的输出缓冲区中
     } else if (obj->encoding == OBJ_ENCODING_INT) {
         /* For integer encoded strings we just convert it into a string
          * using our optimized function, and attach the resulting string
          * to the output buffer. */
         char buf[32];
         size_t len = ll2string(buf,sizeof(buf),(long)obj->ptr);
-        if (_addReplyToBuffer(c,buf,len) != C_OK)
-            _addReplyProtoToList(c,buf,len);
+        if (_addReplyToBuffer(c,buf,len) != C_OK)                                 //将要返回的结果添加到客户端的输出缓冲区中
+            _addReplyProtoToList(c,buf,len);                                      //将要返回的结果添加到客户端的输出缓冲区中
     } else {
         serverPanic("Wrong obj->encoding in addReply()");
     }
@@ -1709,6 +1710,7 @@ void unprotectClient(client *c) {
     }
 }
 
+//管道命令
 /* Like processMultibulkBuffer(), but for the inline protocol instead of RESP,
  * this function consumes the client query buffer and creates a command ready
  * to be executed inside the client structure. Returns C_OK if the command
@@ -1822,6 +1824,7 @@ static void setProtocolError(const char *errstr, client *c) {
     c->flags |= (CLIENT_CLOSE_AFTER_REPLY|CLIENT_PROTOCOL_ERROR);
 }
 
+//RESP协议请求
 /* Process the query buffer for client 'c', setting up the client argument
  * vector for command execution. Returns C_OK if after running the function
  * the client has a well-formed ready to be processed command, otherwise
@@ -2013,6 +2016,7 @@ void commandProcessed(client *c) {
     if (c->flags & CLIENT_MASTER) {
         long long applied = c->reploff - prev_offset;
         if (applied) {
+            //将主节点接收到的命令同步给从节点
             replicationFeedSlavesFromMasterStream(server.slaves,
                     c->pending_querybuf, applied);
             sdsrange(c->pending_querybuf,applied,-1);
@@ -2033,6 +2037,8 @@ int processCommandAndResetClient(client *c) {
     int deadclient = 0;
     client *old_client = server.current_client;
     server.current_client = c;
+
+    //执行command
     if (processCommand(c) == C_OK) {
         commandProcessed(c);
     }
@@ -2096,19 +2102,20 @@ void processInputBuffer(client *c) {
          * The same applies for clients we want to terminate ASAP. */
         if (c->flags & (CLIENT_CLOSE_AFTER_REPLY|CLIENT_CLOSE_ASAP)) break;
 
-        //多行还是单行
+        //判断协议类型
         /* Determine request type when unknown. */
         if (!c->reqtype) {
             if (c->querybuf[c->qb_pos] == '*') {
-                c->reqtype = PROTO_REQ_MULTIBULK;
+                c->reqtype = PROTO_REQ_MULTIBULK;     //RESP协议请求
             } else {
-                c->reqtype = PROTO_REQ_INLINE;
+                c->reqtype = PROTO_REQ_INLINE;        //管道命令，“\r\n”分隔
             }
         }
 
-        //Gopher
         if (c->reqtype == PROTO_REQ_INLINE) {
+            //管道命令
             if (processInlineBuffer(c) != C_OK) break;
+
             /* If the Gopher mode and we got zero or one argument, process
              * the request in Gopher mode. To avoid data race, Redis won't
              * support Gopher if enable io threads to read queries. */
@@ -2116,12 +2123,14 @@ void processInputBuffer(client *c) {
                 ((c->argc == 1 && ((char*)(c->argv[0]->ptr))[0] == '/') ||
                   c->argc == 0))
             {
+                //Gopher
                 processGopherRequest(c);
                 resetClient(c);
                 c->flags |= CLIENT_CLOSE_AFTER_REPLY;
                 break;
             }
         } else if (c->reqtype == PROTO_REQ_MULTIBULK) {
+            //RESP协议请求
             if (processMultibulkBuffer(c) != C_OK) break;
         } else {
             serverPanic("Unknown request type");
@@ -2129,8 +2138,11 @@ void processInputBuffer(client *c) {
 
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
+            //异常处理
             resetClient(c);
         } else {
+            //如果客户端有CLIENT_PENDING_READ标识，将其改为CLIENT_PENDING_COMMAND，就退出循环
+            //并不调用processCommandAndResetClient函数执行命令
             /* If we are in the context of an I/O thread, we can't really
              * execute the command here. All we can do is to flag the client
              * as one that needs to process the command. */
@@ -2171,6 +2183,7 @@ void readQueryFromClient(connection *conn) {
     /* Update total number of reads on server */
     atomicIncr(server.stat_total_reads_processed, 1);
 
+    //最大读取长度为16KB
     readlen = PROTO_IOBUF_LEN;
     /* If this is a multi bulk request, and we are processing a bulk reply
      * that is large enough, try to maximize the probability that the query
@@ -2188,6 +2201,7 @@ void readQueryFromClient(connection *conn) {
         if (remaining > 0 && remaining < readlen) readlen = remaining;
     }
 
+    //给缓冲区分配空间
     qblen = sdslen(c->querybuf);
     if (c->querybuf_peak < qblen) c->querybuf_peak = qblen;
     c->querybuf = sdsMakeRoomFor(c->querybuf, readlen);
@@ -2207,6 +2221,7 @@ void readQueryFromClient(connection *conn) {
         freeClientAsync(c);
         return;
     } else if (c->flags & CLIENT_MASTER) {
+        //主从复制的主节点，要写入到缓存
         /* Append the query buffer to the pending (not applied) buffer
          * of the master. We'll use this buffer later in order to have a
          * copy of the string applied by the last command executed. */

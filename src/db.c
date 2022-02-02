@@ -220,6 +220,7 @@ void dbOverwrite(redisDb *db, robj *key, robj *val) {
     dictFreeVal(db->dict, &auxentry);
 }
 
+//进行SET
 /* High level Set operation. This function can be used in order to set
  * a key, whatever it was existing or not, to a new object.
  *

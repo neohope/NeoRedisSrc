@@ -324,6 +324,7 @@ void showLatestBacklog(void) {
     sdsfree(dump);
 }
 
+//将主节点接收到的命令同步给从节点
 /* This function is used in order to proxy what we receive from our master
  * to our sub-slaves. */
 #include <ctype.h>
