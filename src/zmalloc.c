@@ -300,6 +300,7 @@ char *zstrdup(const char *s) {
     return p;
 }
 
+//计算已使用的内存量
 size_t zmalloc_used_memory(void) {
     size_t um;
     atomicGet(used_memory,um);

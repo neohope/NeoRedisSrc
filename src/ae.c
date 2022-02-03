@@ -313,6 +313,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
             te->refcount--;
             processed++;
             now = getMonotonicUs();
+            // 如果返回值不是AE_NOMORE，则继续把当前事件间隔retval毫秒后继续执行
             if (retval != AE_NOMORE) {
                 te->when = now + retval * 1000;
             } else {

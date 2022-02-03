@@ -2059,6 +2059,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 stat_net_output_bytes);
     }
 
+    //设置LRU时钟
     /* We have just LRU_BITS bits per object for LRU information.
      * So we use an (eventually wrapping) LRU clock.
      *
@@ -2070,8 +2071,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      *
      * Note that you can change the resolution altering the
      * LRU_CLOCK_RESOLUTION define. */
-    unsigned int lruclock = getLRUClock();
-    atomicSet(server.lruclock,lruclock);
+    unsigned int lruclock = getLRUClock();           //调用getLRUClock函数计算全局LRU时钟值
+    atomicSet(server.lruclock,lruclock);             //设置lruclock为刚计算的LRU时钟值
 
     //更新内存状态
     cronUpdateMemoryStats();
@@ -3322,7 +3323,7 @@ void initServer(void) {
     server.aof_last_write_errno = 0;
     server.repl_good_slaves_count = 0;
 
-    //创建Timer定时事件，用于处理后台操作
+    //创建Timer定时事件，用于处理后台操作serverCron
     /* Create the timer callback, this is our way to process many background
      * operations incrementally, like clients timeout, eviction of unaccessed
      * expired keys and so forth. */
@@ -4128,7 +4129,7 @@ int processCommand(client *c) {
         }
     }
 
-    //处理内存情况
+    //处理内存情况，释放内存
     /* Handle the maxmemory directive.
      *
      * Note that we do not want to reclaim memory if we are here re-entering
@@ -4136,11 +4137,16 @@ int processCommand(client *c) {
      * condition, to avoid mixing the propagation of scripts with the
      * propagation of DELs due to eviction. */
     if (server.maxmemory && !server.lua_timedout) {
+        //设置了maxmemory配置项为非0值
+        //并且 Lua 脚本没有在超时运行
+        //释放内存
         int out_of_memory = (performEvictions() == EVICT_FAIL);
+
         /* performEvictions may flush slave output buffers. This may result
          * in a slave, that may be the active client, to be freed. */
         if (server.current_client == NULL) return C_ERR;
 
+        //oom时，拒绝执行部分命令
         int reject_cmd_on_oom = is_denyoom_command;
         /* If client is in MULTI/EXEC context, queuing may consume an unlimited
          * amount of memory, so we want to stop that.

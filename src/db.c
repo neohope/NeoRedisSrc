@@ -32,22 +32,23 @@ void updateLFU(robj *val) {
     val->lru = (LFUGetTimeInMinutes()<<8) | counter;
 }
 
+//查找KEY的API
 /* Low level key lookup API, not actually called directly from commands
  * implementations that should instead rely on lookupKeyRead(),
  * lookupKeyWrite() and lookupKeyReadWithFlags(). */
 robj *lookupKey(redisDb *db, robj *key, int flags) {
-    dictEntry *de = dictFind(db->dict,key->ptr);
+    dictEntry *de = dictFind(db->dict,key->ptr);                           //查找键值对
     if (de) {
-        robj *val = dictGetVal(de);
+        robj *val = dictGetVal(de);                                        //获取键值对对应的redisObject结构体
 
         /* Update the access time for the ageing algorithm.
          * Don't do it if we have a saving child, as this will trigger
          * a copy on write madness. */
         if (!hasActiveChildProcess() && !(flags & LOOKUP_NOTOUCH)){
             if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-                updateLFU(val);
+                updateLFU(val);                                            //如果使用了LFU策略，更新LFU计数值
             } else {
-                val->lru = LRU_CLOCK();
+                val->lru = LRU_CLOCK();                                    //否则，调用LRU_CLOCK函数获取全局LRU时钟值
             }
         }
         return val;

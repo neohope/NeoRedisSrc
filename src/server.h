@@ -640,8 +640,8 @@ typedef struct RedisModuleDigest {
 #define OBJ_ENCODING_STREAM 10 /* Encoded as a radix tree of listpacks */
 
 #define LRU_BITS 24
-#define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */
-#define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */
+#define LRU_CLOCK_MAX ((1<<LRU_BITS)-1) /* Max value of obj->lru */              //LRU时钟的最大值
+#define LRU_CLOCK_RESOLUTION 1000 /* LRU clock resolution in ms */               //以毫秒为单位的LRU时钟精度
 
 #define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. */
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
@@ -652,8 +652,8 @@ typedef struct RedisModuleDigest {
 typedef struct redisObject {
     unsigned type:4;                // 数据类型，包括String、List、Hash等
     unsigned encoding:4;            // 编码类型，实现数据类型所用的数据结构
-    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
-                            * LFU data (least significant 8 bits frequency
+    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or         //如果启用LRU算法，保存最后访问时间24b
+                            * LFU data (least significant 8 bits frequency       //如果启用LFU算法，保存LFU数据【频率8b+时间16b】
                             * and most significant 16 bits access time). */
     int refcount;                   // 引用计数
     void *ptr;                      // 指向值的指针
@@ -1158,7 +1158,7 @@ struct redisServer {
                                    the actual 'hz' field value if dynamic-hz
                                    is enabled. */
     mode_t umask;               /* The umask value of the process on startup */
-    int hz;                     /* serverCron() calls frequency in hertz */
+    int hz;                     /* serverCron() calls frequency in hertz */       //serverCron执行频率
     int in_fork_child;          /* indication that this is a fork child */
     redisDb *db;
     dict *commands;             /* Command table */                               //命令名称及对应redisCommand

@@ -12,7 +12,7 @@
 #endif
 
 /* ===================== Creation and parsing of objects ==================== */
-
+//创建redisobject
 robj *createObject(int type, void *ptr) {
     robj *o = zmalloc(sizeof(*o));
     o->type = type;
@@ -23,9 +23,9 @@ robj *createObject(int type, void *ptr) {
     /* Set the LRU to the current lruclock (minutes resolution), or
      * alternatively the LFU counter. */
     if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-        o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;
+        o->lru = (LFUGetTimeInMinutes()<<8) | LFU_INIT_VAL;          //如果缓存替换策略是LFU，那么将lru变量设置为LFU的计数值
     } else {
-        o->lru = LRU_CLOCK();
+        o->lru = LRU_CLOCK();                                        //否则，调用LRU_CLOCK函数获取LRU时钟值
     }
     return o;
 }
