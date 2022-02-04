@@ -156,6 +156,7 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
             idle = estimateObjectIdleTime(o);
         } else if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
             //LFU策略，会计算KV对象访问频率，排除近期访问频率最低的
+            //会先衰减一次访问次数，counter越小越应该被优先淘汰
             /* When we use an LRU policy, we sort the keys by idle time
              * so that we expire keys starting from greater idle time.
              * However when the policy is an LFU one, we have a frequency
@@ -290,15 +291,16 @@ unsigned long LFUTimeElapsed(unsigned long ldt) {
 /* Logarithmically increment a counter. The greater is the current counter value
  * the less likely is that it gets really implemented. Saturate it at 255. */
 uint8_t LFULogIncr(uint8_t counter) {
-    if (counter == 255) return 255;
-    double r = (double)rand()/RAND_MAX;
-    double baseval = counter - LFU_INIT_VAL;
-    if (baseval < 0) baseval = 0;
-    double p = 1.0/(baseval*server.lfu_log_factor+1);
-    if (r < p) counter++;
+    if (counter == 255) return 255;                    //访问次数已经等于255，返回
+    double r = (double)rand()/RAND_MAX;                //计算一个随机数r
+    double baseval = counter - LFU_INIT_VAL;           //计算当前访问次数和初始值的差值
+    if (baseval < 0) baseval = 0;                      //差值小于0，则将其设为0
+    double p = 1.0/(baseval*server.lfu_log_factor+1);  //根据baseval和lfu_log_factor计算阈值p
+    if (r < p) counter++;                              //p大于r时,计数+1；baseval越大，lfu_log_factor越大越难能加
     return counter;
 }
 
+//衰减访问次数
 /* If the object decrement time is reached decrement the LFU counter but
  * do not update LFU fields of the object, we update the access time
  * and counter in an explicit way when the object is really accessed.
@@ -312,10 +314,11 @@ uint8_t LFULogIncr(uint8_t counter) {
 unsigned long LFUDecrAndReturn(robj *o) {
     unsigned long ldt = o->lru >> 8;
     unsigned long counter = o->lru & 255;
+    //衰减次数默认就是上一次访问到现在的分钟数
     unsigned long num_periods = server.lfu_decay_time ? LFUTimeElapsed(ldt) / server.lfu_decay_time : 0;
-    if (num_periods)
-        counter = (num_periods > counter) ? 0 : counter - num_periods;
-    return counter;
+    if (num_periods)                                                       //如果衰减大小不为0
+        counter = (num_periods > counter) ? 0 : counter - num_periods;     //如果衰减大小小于当前访问次数，那么，衰减后的访问次数是当前访问次数减去衰减大小；否则，衰减后的访问次数等于0
+    return counter;                                                        //如果衰减大小为0，不做衰减
 }
 
 //去除主从复制缓冲区、AOF缓冲区影响

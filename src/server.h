@@ -653,7 +653,7 @@ typedef struct redisObject {
     unsigned type:4;                // 数据类型，包括String、List、Hash等
     unsigned encoding:4;            // 编码类型，实现数据类型所用的数据结构
     unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or         //如果启用LRU算法，保存最后访问时间24b
-                            * LFU data (least significant 8 bits frequency       //如果启用LFU算法，保存LFU数据【频率8b+时间16b】
+                            * LFU data (least significant 8 bits frequency       //如果启用LFU算法，保存LFU数据【频率8b+时间戳16b】
                             * and most significant 16 bits access time). */
     int refcount;                   // 引用计数
     void *ptr;                      // 指向值的指针

@@ -23,12 +23,16 @@ struct dbBackup {
 
 int keyIsExpired(redisDb *db, robj *key);
 
+//更新LFU频率
 /* Update LFU when an object is accessed.
  * Firstly, decrement the counter if the decrement time is reached.
  * Then logarithmically increment the counter, and update the access time. */
 void updateLFU(robj *val) {
+    //衰减历史访问次数
     unsigned long counter = LFUDecrAndReturn(val);
+    //计算新访问次数
     counter = LFULogIncr(counter);
+    //设置时间戳及访问次数
     val->lru = (LFUGetTimeInMinutes()<<8) | counter;
 }
 
@@ -46,7 +50,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
          * a copy on write madness. */
         if (!hasActiveChildProcess() && !(flags & LOOKUP_NOTOUCH)){
             if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
-                updateLFU(val);                                            //如果使用了LFU策略，更新LFU计数值
+                updateLFU(val);                                            //如果使用了LFU策略，更新LFU频率
             } else {
                 val->lru = LRU_CLOCK();                                    //否则，调用LRU_CLOCK函数获取全局LRU时钟值
             }
