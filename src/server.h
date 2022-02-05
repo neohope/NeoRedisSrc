@@ -951,6 +951,7 @@ struct sentinelConfig {
     list *post_monitor_cfg;
 };
 
+//全局共享变量，包括各种命令等
 struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *pong, *space,
     *colon, *queued, *null[4], *nullarray[4], *emptymap[4], *emptyset[4],
@@ -1570,11 +1571,11 @@ struct redisServer {
     int lua_always_replicate_commands; /* Default replication type. */
     int lua_oom;          /* OOM detected when script start? */
     /* Lazy free */
-    int lazyfree_lazy_eviction;
-    int lazyfree_lazy_expire;
-    int lazyfree_lazy_server_del;
-    int lazyfree_lazy_user_del;
-    int lazyfree_lazy_user_flush;
+    int lazyfree_lazy_eviction;          //缓存淘汰，惰性删除
+    int lazyfree_lazy_expire;            //过期key，惰性删除【内存达到maxmemory并设置了淘汰策略】
+    int lazyfree_lazy_server_del;        //server命令造成隐式删除操作，惰性删除【执行RENAME/MOVE等命令或需要覆盖一个key时，Redis内部删除旧key】
+    int lazyfree_lazy_user_del;          //DEL命令与UNLINK命令运作方式一致【默认：即使开启了 lazy-free，但如果执行的是 DEL 命令，则还是会同步释放 key 内存，只有使用 UNLINK 命令才「可能」异步释放内存】
+    int lazyfree_lazy_user_flush;        //主从全量同步，从库清空数据库时异步释放内存，在加载RDB文件时，惰性删除原有旧数据【开启必定后台，前三个不一定】
     /* Latency monitor */
     long long latency_monitor_threshold;
     dict *latency_events;

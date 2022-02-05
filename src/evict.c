@@ -651,7 +651,7 @@ int performEvictions(void) {
         if (bestkey) {
             db = server.db+bestdbid;                                          //key所在db
             robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
-            propagateExpire(db,keyobj,server.lazyfree_lazy_eviction);         //通知slave，写AOF
+            propagateExpire(db,keyobj,server.lazyfree_lazy_eviction);         //通知从节点，写AOF
             /* We compute the amount of memory freed by db*Delete() alone.
              * It is possible that actually the memory needed to propagate
              * the DEL in AOF and replication link is greater than the one
@@ -670,8 +670,8 @@ int performEvictions(void) {
                 dbSyncDelete(db,keyobj);                     //否则进行同步删除
             latencyEndMonitor(eviction_latency);
             latencyAddSampleIfNeeded("eviction-del",eviction_latency);
-            delta -= (long long) zmalloc_used_memory();      //释放了多少内存
-            mem_freed += delta;                              //更新内存统计信息
+            delta -= (long long) zmalloc_used_memory();      //计算释放了多少内存
+            mem_freed += delta;                              //更新释放内存统计信息
             server.stat_evictedkeys++;                       //更新释放key统计信息
             signalModifiedKey(NULL,db,keyobj);
             notifyKeyspaceEvent(NOTIFY_EVICTED, "evicted",
@@ -679,15 +679,17 @@ int performEvictions(void) {
             decrRefCount(keyobj);                            //减少引用
             keys_freed++;                                    //计算释放了多少个key
 
+            //如果使用了惰性删除，并且每删除16个key后，统计下当前内存使用量
             if (keys_freed % 16 == 0) {
-                //释放key到了16倍数后，推送到副本
+                //释放key到了16倍数后，强制推送到副本，提升实时性
                 /* When the memory to free starts to be big enough, we may
                  * start spending so much time here that is impossible to
                  * deliver data to the replicas fast enough, so we force the
                  * transmission here inside the loop. */
                 if (slaves) flushSlavesOutputBuffers();
 
-                //懒释放
+                //如果开启了惰性删除，要不时检查一下内存情况，如果内存情况恢复正常了，就可以停止释放内存了
+                //因为dbAsyncDelete并不能计算后台线程释放内存的情况
                 /* Normally our stop condition is the ability to release
                  * a fixed, pre-computed amount of memory. However when we
                  * are deleting objects in another thread, it's better to
@@ -696,6 +698,7 @@ int performEvictions(void) {
                  * across the dbAsyncDelete() call, while the thread can
                  * release the memory all the time. */
                 if (server.lazyfree_lazy_eviction) {
+                    //计算当前内存使用量是否不超过最大内存容量
                     if (getMaxmemoryState(NULL,NULL,NULL,NULL) == C_OK) {
                         break;
                     }

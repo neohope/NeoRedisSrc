@@ -10,6 +10,7 @@
 static redisAtomic size_t lazyfree_objects = 0;
 static redisAtomic size_t lazyfreed_objects = 0;
 
+//在后台线程，懒惰删除对象
 /* Release objects from the lazyfree thread. It's just decrRefCount()
  * updating the count of objects to release. */
 void lazyfreeFreeObject(void *args[]) {
@@ -74,6 +75,7 @@ size_t lazyfreeGetFreedObjectsCount(void) {
     return aux;
 }
 
+//根据要删除的KV类型，来计算删除开销【估算工作量】
 /* Return the amount of work needed in order to free an object.
  * The return value is not always the actual number of allocations the
  * object is composed of, but a number proportional to it.
@@ -90,6 +92,14 @@ size_t lazyfreeGetFreedObjectsCount(void) {
  * For lists the function returns the number of elements in the quicklist
  * representing the list. */
 size_t lazyfreeGetFreeEffort(robj *key, robj *obj) {
+    //当键值对类型属于 List、Hash、Set 和 Sorted Set 这四种集合类型中的一种，并且没有使用紧凑型内存结构来保存的话，删除开销就等于集合中的元素个数。
+    //否则的话，删除开销就等于 1
+    //
+    //当 Hash/Set 底层采用哈希表存储（非 ziplist/int 编码存储）时，并且元素数量超过 64 个
+    //当 ZSet 底层采用跳表存储（非 ziplist 编码存储）时，并且元素数量超过 64 个
+    //当 List 链表节点数量超过 64 个（注意，不是元素数量，而是链表节点的数量，List 底层实现是一个链表，链表每个节点是一个 ziplist，一个 ziplist 可能有多个元素数据）
+    //其他比如，String（不管内存占用多大）、List（少量元素）、Set（int 编码存储）、Hash/ZSet（ziplist 编码存储）这些情况下的 key，在释放内存时，依旧在「主线程」中操作
+    //可见，即使打开了 lazy-free，String 类型的 bigkey，在删除时依旧有「阻塞」主线程的风险。所以，即便 Redis 提供了 lazy-free，还是不建议在 Redis 存储 bigkey
     if (obj->type == OBJ_LIST) {
         quicklist *ql = obj->ptr;
         return ql->len;
@@ -142,26 +152,31 @@ size_t lazyfreeGetFreeEffort(robj *key, robj *obj) {
     }
 }
 
+//DB惰性删除
 /* Delete a key, value, and associated expiration entry if any, from the DB.
  * If there are enough allocations to free the value object may be put into
  * a lazy free list instead of being freed synchronously. The lazy free list
  * will be reclaimed in a different bio.c thread. */
 #define LAZYFREE_THRESHOLD 64
 int dbAsyncDelete(redisDb *db, robj *key) {
+    //在过期 key 的哈希表中同步删除被淘汰的键值对
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
 
+    //在全局哈希表中异步删除被淘汰的键值对
     /* If the value is composed of a few allocations, to free in a lazy way
      * is actually just slower... So under a certain limit we just free
      * the object synchronously. */
     dictEntry *de = dictUnlink(db->dict,key->ptr);
+
     if (de) {
         robj *val = dictGetVal(de);
 
         /* Tells the module that the key has been unlinked from the database. */
         moduleNotifyKeyUnlink(key,val);
 
+        //计算释放KV内存空间的CPU开销
         size_t free_effort = lazyfreeGetFreeEffort(key,val);
 
         /* If releasing the object is too much work, do it in the background
@@ -173,15 +188,17 @@ int dbAsyncDelete(redisDb *db, robj *key) {
          * through and reach the dictFreeUnlinkedEntry() call, that will be
          * equivalent to just calling decrRefCount(). */
         if (free_effort > LAZYFREE_THRESHOLD && val->refcount == 1) {
+            //当被淘汰键值对是包含超过 64 个元素的集合类型时，dbAsyncDelete 函数才会调用 bioCreateBackgroundJob 函数，来实际创建后台任务执行惰性删除。
             atomicIncr(lazyfree_objects,1);
-            bioCreateLazyFreeJob(lazyfreeFreeObject,1, val);
-            dictSetVal(db->dict,de,NULL);
+            bioCreateLazyFreeJob(lazyfreeFreeObject,1, val);    //创建惰性删除的后台任务，交给后台线程执行
+            dictSetVal(db->dict,de,NULL);                       //将被淘汰键值对的value设置为NULL
         }
     }
 
     /* Release the key-val pair, or just the key if we set the val
      * field to NULL in order to lazy free it later. */
     if (de) {
+        //当被淘汰键值对是单个元素，或小于64个元素的集合类型时，直接同步释放
         dictFreeUnlinkedEntry(db->dict,de);
         if (server.cluster_enabled) slotToKeyDel(key->ptr);
         return 1;

@@ -356,6 +356,8 @@ void incrRefCount(robj *o) {
     }
 }
 
+//减少引用计数
+//如果引用计数为1，释放对象
 void decrRefCount(robj *o) {
     if (o->refcount == 1) {
         switch(o->type) {

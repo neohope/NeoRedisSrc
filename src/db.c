@@ -292,17 +292,20 @@ robj *dbRandomKey(redisDb *db) {
     }
 }
 
+//DB同步山粗
 /* Delete a key, value, and associated expiration entry if any, from the DB */
 int dbSyncDelete(redisDb *db, robj *key) {
     /* Deleting an entry from the expires dict will not free the sds of
      * the key, because it is shared with the main dictionary. */
+    //在过期key的哈希表中删除被淘汰的键值对
     if (dictSize(db->expires) > 0) dictDelete(db->expires,key->ptr);
+    //在全局哈希表中删除被淘汰的键值对
     dictEntry *de = dictUnlink(db->dict,key->ptr);
     if (de) {
         robj *val = dictGetVal(de);
         /* Tells the module that the key has been unlinked from the database. */
-        moduleNotifyKeyUnlink(key,val);
-        dictFreeUnlinkedEntry(db->dict,de);
+        moduleNotifyKeyUnlink(key,val);                       //通知module有key被释放
+        dictFreeUnlinkedEntry(db->dict,de);                   //直接同步释放
         if (server.cluster_enabled) slotToKeyDel(key->ptr);
         return 1;
     } else {
@@ -1445,7 +1448,7 @@ void deleteExpiredKeyAndPropagate(redisDb *db, robj *keyobj) {
  * keys. */
 void propagateExpire(redisDb *db, robj *key, int lazy) {
     robj *argv[2];
-
+    //根据全局变量server.lazyfree_lazy_eviction，来决定删除操作具体对应哪个命令
     argv[0] = lazy ? shared.unlink : shared.del;
     argv[1] = key;
     incrRefCount(argv[0]);
@@ -1455,6 +1458,7 @@ void propagateExpire(redisDb *db, robj *key, int lazy) {
      * Even if module executed a command without asking for propagation. */
     int prev_replication_allowed = server.replication_allowed;
     server.replication_allowed = 1;
+    //普通删除DEL，惰性删除UNLINK
     propagate(server.delCommand,db->id,argv,2,PROPAGATE_AOF|PROPAGATE_REPL);
     server.replication_allowed = prev_replication_allowed;
 

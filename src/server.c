@@ -40,7 +40,7 @@
 
 /* Our shared "common" objects */
 
-struct sharedObjectsStruct shared;
+struct sharedObjectsStruct shared;              //全局共享变量，包括各种命令等
 
 /* Global vars that are actually used as constants. The following double
  * values are used for double on-disk serialization, and are initialized
@@ -1248,6 +1248,7 @@ int dictSdsKeyCaseCompare(void *privdata, const void *key1,
     return strcasecmp(key1, key2) == 0;
 }
 
+//Object释放
 void dictObjectDestructor(void *privdata, void *val)
 {
     DICT_NOTUSED(privdata);
@@ -1256,6 +1257,7 @@ void dictObjectDestructor(void *privdata, void *val)
     decrRefCount(val);
 }
 
+//SDS释放
 void dictSdsDestructor(void *privdata, void *val)
 {
     DICT_NOTUSED(privdata);
@@ -3618,16 +3620,16 @@ void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
      * both the AOF and the replication link will have the same consistency
      * and atomicity guarantees. */
     if (server.in_exec && !server.propagate_in_transaction)
-        execCommandPropagateMulti(dbid);
+        execCommandPropagateMulti(dbid);                           //事务中遇到写命令，立即通知从节点
 
     /* This needs to be unreachable since the dataset should be fixed during 
      * client pause, otherwise data may be lossed during a failover. */
     serverAssert(!(areClientsPaused() && !server.client_pause_in_transaction));
 
     if (server.aof_state != AOF_OFF && flags & PROPAGATE_AOF)
-        feedAppendOnlyFile(cmd,dbid,argv,argc);
+        feedAppendOnlyFile(cmd,dbid,argv,argc);                    //写入AOF文件
     if (flags & PROPAGATE_REPL)
-        replicationFeedSlaves(server.slaves,dbid,argv,argc);
+        replicationFeedSlaves(server.slaves,dbid,argv,argc);       //通知从节点
 }
 
 /* Used inside commands to schedule the propagation of additional commands
