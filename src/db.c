@@ -608,6 +608,7 @@ int getFlushCommandFlags(client *c, int *flags) {
     return C_OK;
 }
 
+//flush整个服务器文件，生成RDB文件
 /* Flushes the whole server data set. */
 void flushAllDataAndResetRDB(int flags) {
     server.dirty += emptyDb(-1,flags,NULL);
@@ -652,6 +653,8 @@ void flushdbCommand(client *c) {
 #endif
 }
 
+//flushall命令
+//会调用到RDB生成命令
 /* FLUSHALL [ASYNC]
  *
  * Flushes the whole server data set. */

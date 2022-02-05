@@ -2134,7 +2134,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         rewriteAppendOnlyFileBackground();
     }
 
-    //后台操作 或 AOF rewrite 是否在进行
+    //RDB相关
+    //没有后台操作 或 AOF rewrite在进行
     /* Check if a background saving or AOF rewrite in progress terminated. */
     if (hasActiveChildProcess() || ldbPendingChildren())
     {
@@ -2142,7 +2143,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         run_with_period(1000) receiveChildInfo();
         checkChildrenDone();
     } else {
-        //开始处理
+        //开始处理RDB输出
         /* If there is not a background saving/rewrite in progress check if
          * we have to save/rewrite now. */
         for (j = 0; j < server.saveparamslen; j++) {
@@ -2162,7 +2163,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                     sp->changes, (int)sp->seconds);
                 rdbSaveInfo rsi, *rsiptr;
                 rsiptr = rdbPopulateSaveInfo(&rsi);
-                rdbSaveBackground(server.rdb_filename,rsiptr);
+                rdbSaveBackground(server.rdb_filename,rsiptr);                 //如果达到了更改量阈值，等待秒数阈值，延时失败重试达到时间，会进行一次调用
                 break;
             }
         }
@@ -2258,7 +2259,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     {
         rdbSaveInfo rsi, *rsiptr;
         rsiptr = rdbPopulateSaveInfo(&rsi);
-        if (rdbSaveBackground(server.rdb_filename,rsiptr) == C_OK)
+        if (rdbSaveBackground(server.rdb_filename,rsiptr) == C_OK)                    //bgsave因为AOF重写的原有被迫推迟，所以在最后需要重新调用
             server.rdb_bgsave_scheduled = 0;
     }
 
@@ -4357,6 +4358,7 @@ void closeListeningSockets(int unlink_unix_socket) {
     }
 }
 
+//关闭redis，会生成RDB文件
 int prepareForShutdown(int flags) {
     /* When SHUTDOWN is called while the server is loading a dataset in
      * memory we need to make sure no attempt is performed to save
@@ -4421,6 +4423,7 @@ int prepareForShutdown(int flags) {
         }
     }
 
+    //关闭前，保存一个新的RDB文件
     /* Create a new RDB file before exiting. */
     if ((server.saveparamslen > 0 && !nosave) || save) {
         serverLog(LL_NOTICE,"Saving the final RDB snapshot before exiting.");

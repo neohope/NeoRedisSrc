@@ -601,6 +601,7 @@ need_full_resync:
     return C_ERR;
 }
 
+//为副本执行BGSAVE
 /* Start a BGSAVE for replication goals, which is, selecting the disk or
  * socket target depending on the configuration, and making sure that
  * the script cache is flushed before to start.
@@ -634,9 +635,9 @@ int startBgsaveForReplication(int mincapa) {
      * otherwise slave will miss repl-stream-db. */
     if (rsiptr) {
         if (socket_target)
-            retval = rdbSaveToSlavesSockets(rsiptr);
+            retval = rdbSaveToSlavesSockets(rsiptr);                     //为副本执行SAVE，采用socket直接传输
         else
-            retval = rdbSaveBackground(server.rdb_filename,rsiptr);
+            retval = rdbSaveBackground(server.rdb_filename,rsiptr);      //为副本执行BGSAVE，采用落盘文件方式传输RDB时
     } else {
         serverLog(LL_WARNING,"BGSAVE for replication: replication information not available, can't generate the RDB file right now. Try later.");
         retval = C_ERR;
@@ -691,6 +692,7 @@ int startBgsaveForReplication(int mincapa) {
     return retval;
 }
 
+//sync命令
 /* SYNC and PSYNC command implementation. */
 void syncCommand(client *c) {
     /* ignore SYNC if already slave or in monitor mode */
@@ -857,7 +859,7 @@ void syncCommand(client *c) {
             /* We don't have a BGSAVE in progress, let's start one. Diskless
              * or disk-based mode is determined by replica's capacity. */
             if (!hasActiveChildProcess()) {
-                startBgsaveForReplication(c->slave_capa);
+                startBgsaveForReplication(c->slave_capa);                                   //这里真正执行bgsave
             } else {
                 serverLog(LL_NOTICE,
                     "No BGSAVE in progress, but another BG operation is active. "
@@ -3261,6 +3263,8 @@ long long replicationGetSlaveOffset(void) {
 
 /* --------------------------- REPLICATION CRON  ---------------------------- */
 
+//每秒一次，副本定时任务
+//Redis server 执行主从复制命令，以及周期性检测主从复制状态时会触发 RDB 生成
 /* Replication cron function, called 1 time per second. */
 void replicationCron(void) {
     static long long replication_cron_loops = 0;
@@ -3448,7 +3452,7 @@ void replicationCron(void) {
         replicationScriptCacheFlush();
     }
 
-    replicationStartPendingFork();
+    replicationStartPendingFork();             //为副本执行BGSAVE
 
     /* Remove the RDB file used for replication if Redis is not running
      * with any persistence. */
@@ -3459,6 +3463,7 @@ void replicationCron(void) {
     replication_cron_loops++; /* Incremented with frequency 1 HZ. */
 }
 
+//为副本执行BGSAVE
 void replicationStartPendingFork(void) {
     /* Start a BGSAVE good for replication if we have slaves in
      * WAIT_BGSAVE_START state.
@@ -3492,7 +3497,7 @@ void replicationStartPendingFork(void) {
             /* Start the BGSAVE. The called function may start a
              * BGSAVE with socket target or disk target depending on the
              * configuration and slaves capabilities. */
-            startBgsaveForReplication(mincapa);
+            startBgsaveForReplication(mincapa);          //为副本执行BGSAVE
         }
     }
 }
