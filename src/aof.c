@@ -228,6 +228,8 @@ void stopAppendOnly(void) {
     server.aof_buf = sdsempty();
 }
 
+//1、改变配置：config set appendonly yes
+//2、主从节点的复制：restartAOFAfterSYNC
 /* Called when the user switches from "appendonly no" to "appendonly yes"
  * at runtime using the CONFIG command. */
 int startAppendOnly(void) {
@@ -255,6 +257,7 @@ int startAppendOnly(void) {
          * start a new one: the old one cannot be reused because it is not
          * accumulating the AOF buffer. */
         if (server.child_type == CHILD_TYPE_AOF) {
+            //杀死AOF进程，然后重新启动
             serverLog(LL_WARNING,"AOF was enabled but there is already an AOF rewriting in background. Stopping background AOF and starting a rewrite now.");
             killAppendOnlyChild();
         }
@@ -1423,6 +1426,7 @@ ssize_t aofReadDiffFromParent(void) {
     return total;
 }
 
+//真正处理AOF文件输出的函数
 int rewriteAppendOnlyFileRio(rio *aof) {
     dictIterator *di = NULL;
     dictEntry *de;
@@ -1431,6 +1435,7 @@ int rewriteAppendOnlyFileRio(rio *aof) {
     long key_count = 0;
     long long updated_time = 0;
 
+    //遍历DB
     for (j = 0; j < server.dbnum; j++) {
         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
         redisDb *db = server.db+j;
@@ -1442,6 +1447,7 @@ int rewriteAppendOnlyFileRio(rio *aof) {
         if (rioWrite(aof,selectcmd,sizeof(selectcmd)-1) == 0) goto werr;
         if (rioWriteBulkLongLong(aof,j) == 0) goto werr;
 
+        //遍历key
         /* Iterate this DB writing every entry */
         while((de = dictNext(di)) != NULL) {
             sds keystr;
@@ -1454,6 +1460,8 @@ int rewriteAppendOnlyFileRio(rio *aof) {
 
             expiretime = getExpire(db,&key);
 
+            //保存KV
+            //比如STRING，会直接用SET命令保存
             /* Save the key and associated value */
             if (o->type == OBJ_STRING) {
                 /* Emit a SET command */
@@ -1477,6 +1485,8 @@ int rewriteAppendOnlyFileRio(rio *aof) {
             } else {
                 serverPanic("Unknown object type");
             }
+
+            //保存key过期时间
             /* Save the expire time */
             if (expiretime != -1) {
                 char cmd[]="*3\r\n$9\r\nPEXPIREAT\r\n";
@@ -1484,6 +1494,8 @@ int rewriteAppendOnlyFileRio(rio *aof) {
                 if (rioWriteBulkObject(aof,&key) == 0) goto werr;
                 if (rioWriteBulkLongLong(aof,expiretime) == 0) goto werr;
             }
+
+            //从父进程获取差异数据
             /* Read some diff from the parent process from time to time. */
             if (aof->processed_bytes > processed+AOF_READ_DIFF_INTERVAL_BYTES) {
                 processed = aof->processed_bytes;
@@ -1511,6 +1523,7 @@ werr:
     return C_ERR;
 }
 
+//重写AOF文件
 /* Write a sequence of commands able to fully rebuild the dataset into
  * "filename". Used both by REWRITEAOF and BGREWRITEAOF.
  *
@@ -1524,6 +1537,7 @@ int rewriteAppendOnlyFile(char *filename) {
     char tmpfile[256];
     char byte;
 
+    //先写入一个临时文件
     /* Note that we have to use a different temp name here compared to the
      * one used by rewriteAppendOnlyFileBackground() function. */
     snprintf(tmpfile,256,"temp-rewriteaof-%d.aof", (int) getpid());
@@ -1542,12 +1556,14 @@ int rewriteAppendOnlyFile(char *filename) {
     startSaving(RDBFLAGS_AOF_PREAMBLE);
 
     if (server.aof_use_rdb_preamble) {
+        //用rdb格式，作为aof的先导文件
         int error;
         if (rdbSaveRio(&aof,&error,RDBFLAGS_AOF_PREAMBLE,NULL) == C_ERR) {
             errno = error;
             goto werr;
         }
     } else {
+        //用AOF格式保存数据
         if (rewriteAppendOnlyFileRio(&aof) == C_ERR) goto werr;
     }
 
@@ -1556,6 +1572,7 @@ int rewriteAppendOnlyFile(char *filename) {
     if (fflush(fp) == EOF) goto werr;
     if (fsync(fileno(fp)) == -1) goto werr;
 
+    //从父进程获取差异数据
     /* Read again a few times to get more data from the parent.
      * We can't read forever (the server may receive data from clients
      * faster than it is able to send data to the child), so we try to read
@@ -1572,6 +1589,7 @@ int rewriteAppendOnlyFile(char *filename) {
         }
         nodata = 0; /* Start counting from zero, we stop on N *contiguous*
                        timeouts. */
+        //从父进程获取差异数据
         aofReadDiffFromParent();
     }
 
@@ -1625,6 +1643,7 @@ int rewriteAppendOnlyFile(char *filename) {
     if (fclose(fp)) { fp = NULL; goto werr; }
     fp = NULL;
 
+    //重命名AOF文件，将临时文件名，修改为正式文件名
     /* Use RENAME to make sure the DB file is changed atomically only
      * if the generate DB file is ok. */
     if (rename(tmpfile,filename) == -1) {
@@ -1741,6 +1760,8 @@ int rewriteAppendOnlyFileBackground(void) {
 
     if (hasActiveChildProcess()) return C_ERR;
     if (aofCreatePipes() != C_OK) return C_ERR;
+
+    //fork一个子进程进行AOF操作
     if ((childpid = redisFork(CHILD_TYPE_AOF)) == 0) {
         char tmpfile[256];
 
@@ -1748,6 +1769,8 @@ int rewriteAppendOnlyFileBackground(void) {
         redisSetProcTitle("redis-aof-rewrite");
         redisSetCpuAffinity(server.aof_rewrite_cpulist);
         snprintf(tmpfile,256,"temp-rewriteaof-bg-%d.aof", (int) getpid());
+
+        //重写AOF文件
         if (rewriteAppendOnlyFile(tmpfile) == C_OK) {
             sendChildCowInfo(CHILD_INFO_TYPE_AOF_COW_SIZE, "AOF rewrite");
             exitFromChild(0);
@@ -1765,6 +1788,8 @@ int rewriteAppendOnlyFileBackground(void) {
         }
         serverLog(LL_NOTICE,
             "Background append only file rewriting started by pid %ld",(long) childpid);
+
+        //取消aof重写调度任务
         server.aof_rewrite_scheduled = 0;
         server.aof_rewrite_time_start = time(NULL);
 
@@ -1779,10 +1804,13 @@ int rewriteAppendOnlyFileBackground(void) {
     return C_OK; /* unreached */
 }
 
+//bgrewriteaof命令
 void bgrewriteaofCommand(client *c) {
     if (server.child_type == CHILD_TYPE_AOF) {
+        //AOF 重写的子进程正在执行
         addReplyError(c,"Background append only file rewriting already in progress");
     } else if (hasActiveChildProcess()) {
+        //RDB子进程正在执行
         server.aof_rewrite_scheduled = 1;
         addReplyStatus(c,"Background append only file rewriting scheduled");
     } else if (rewriteAppendOnlyFileBackground() == C_OK) {
