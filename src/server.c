@@ -3633,8 +3633,10 @@ void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
      * client pause, otherwise data may be lossed during a failover. */
     serverAssert(!(areClientsPaused() && !server.client_pause_in_transaction));
 
+    //当AOF启用时，将新增命令写入AOF文件
     if (server.aof_state != AOF_OFF && flags & PROPAGATE_AOF)
-        feedAppendOnlyFile(cmd,dbid,argv,argc);                    //写入AOF文件
+        feedAppendOnlyFile(cmd,dbid,argv,argc);
+    
     if (flags & PROPAGATE_REPL)
         replicationFeedSlaves(server.slaves,dbid,argv,argc);       //通知从节点
 }

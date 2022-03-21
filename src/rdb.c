@@ -1247,6 +1247,7 @@ int rdbSaveRio(rio *rdb, int *error, int rdbflags, rdbSaveInfo *rsi) {
             expire = getExpire(db,&key);                               //获取键值对的过期时间
             if (rdbSaveKeyValuePair(rdb,&key,o,expire) == -1) goto werr;    //把key和value写入RDB文件
 
+            //从父进程获取差异数据
             /* When this RDB is produced as part of an AOF rewrite, move
              * accumulated diff from parent to child while rewriting in
              * order to have a smaller final write. */
