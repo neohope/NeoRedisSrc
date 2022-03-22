@@ -183,6 +183,7 @@ int canFeedReplicaReplBuffer(client *replica) {
     return 1;
 }
 
+//将收到的消息，传递个每一个replication slave
 /* Propagate write commands to slaves, and populate the replication backlog
  * as well. This function is used if the instance is a master: we use
  * the commands received by our clients in order to create the replication
@@ -1982,6 +1983,7 @@ char *sendCommandArgv(connection *conn, int argc, char **argv, size_t *argv_lens
     return NULL;
 }
 
+//尝试向master发起增量同步
 /* Try a partial resynchronization with the master if we are about to reconnect.
  * If there is no cached master structure, at least try to issue a
  * "PSYNC ? -1" command in order to trigger a full resync using the PSYNC
@@ -2041,6 +2043,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
     char psync_offset[32];
     sds reply;
 
+    //发送请求
     /* Writing half */
     if (!read_reply) {
         /* Initially set master_initial_offset to -1 to mark the current
@@ -2060,6 +2063,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
             memcpy(psync_offset,"-1",3);
         }
 
+        //调用sendCommand发送PSYNC命令
         /* Issue the PSYNC command, if this is a master with a failover in
          * progress then send the failover argument to the replica to cause it
          * to become a master */
@@ -2078,6 +2082,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
         return PSYNC_WAIT_REPLY;
     }
 
+    //读取结果
     /* Reading half */
     reply = receiveSynchronousResponse(conn);
     if (sdslen(reply) == 0) {
@@ -2089,6 +2094,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
 
     connSetReadHandler(conn, NULL);
 
+    //全量同步
     if (!strncmp(reply,"+FULLRESYNC",11)) {
         char *replid = NULL, *offset = NULL;
 
@@ -2122,6 +2128,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
         return PSYNC_FULLRESYNC;
     }
 
+    //增量同步
     if (!strncmp(reply,"+CONTINUE",9)) {
         /* Partial resync was accepted. */
         serverLog(LL_NOTICE,
@@ -2170,6 +2177,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
         return PSYNC_CONTINUE;
     }
 
+    //出现错误
     /* If we reach this point we received either an error (since the master does
      * not understand PSYNC or because it is in a special state and cannot
      * serve our request), or an unexpected reply from the master.
@@ -2201,6 +2209,7 @@ int slaveTryPartialResynchronization(connection *conn, int read_reply) {
     return PSYNC_NOT_SUPPORTED;
 }
 
+//同时对AE_WRITABLE事件注册了处理函数syncWithMaster
 /* This handler fires when the non blocking connect was able to
  * establish a connection with the master. */
 void syncWithMaster(connection *conn) {
@@ -2223,6 +2232,7 @@ void syncWithMaster(connection *conn) {
         goto error;
     }
 
+    //当前状态为REPL_STATE_CONNECTING时，发送一个PING命令，状态变化为REPL_STATE_RECEIVE_PING_REPLY
     /* Send a PING to check the master is able to reply without errors. */
     if (server.repl_state == REPL_STATE_CONNECTING) {
         serverLog(LL_NOTICE,"Non blocking connect for SYNC fired the event.");
@@ -2238,6 +2248,8 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_PING_REPLY时，等待一个PONG命令
+    //状态改为REPL_STATE_SEND_HANDSHAKE
     /* Receive the PONG command. */
     if (server.repl_state == REPL_STATE_RECEIVE_PING_REPLY) {
         err = receiveSynchronousResponse(conn);
@@ -2263,7 +2275,10 @@ void syncWithMaster(connection *conn) {
         err = NULL;
         server.repl_state = REPL_STATE_SEND_HANDSHAKE;
     }
-
+    
+    //当前状态为REPL_STATE_SEND_HANDSHAKE
+    //向master发送slave信息，包括授权信息、地址信息、容量信息、RDB格式无盘复制支持、PSYNC v2支持等
+    //状态改为REPL_STATE_RECEIVE_AUTH_REPLY
     if (server.repl_state == REPL_STATE_SEND_HANDSHAKE) {
         /* AUTH with the master if required. */
         if (server.masterauth) {
@@ -2322,9 +2337,13 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_AUTH_REPLY
+    //不需要授权，状态变化为REPL_STATE_RECEIVE_PORT_REPLY
     if (server.repl_state == REPL_STATE_RECEIVE_AUTH_REPLY && !server.masterauth)
         server.repl_state = REPL_STATE_RECEIVE_PORT_REPLY;
 
+    //当前状态为REPL_STATE_RECEIVE_AUTH_REPLY，获取授权结果
+    //状态变化为REPL_STATE_RECEIVE_PORT_REPLY
     /* Receive AUTH reply. */
     if (server.repl_state == REPL_STATE_RECEIVE_AUTH_REPLY) {
         err = receiveSynchronousResponse(conn);
@@ -2339,6 +2358,8 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_PORT_REPLY
+    //状态转换为REPL_STATE_RECEIVE_IP_REPLY
     /* Receive REPLCONF listening-port reply. */
     if (server.repl_state == REPL_STATE_RECEIVE_PORT_REPLY) {
         err = receiveSynchronousResponse(conn);
@@ -2353,9 +2374,13 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_IP_REPLY，而且没有配置slave_announce_ip
+    //状态转换为REPL_STATE_RECEIVE_CAPA_REPLY
     if (server.repl_state == REPL_STATE_RECEIVE_IP_REPLY && !server.slave_announce_ip)
         server.repl_state = REPL_STATE_RECEIVE_CAPA_REPLY;
 
+    //当前状态为REPL_STATE_RECEIVE_IP_REPLY，而且配置了slave_announce_ip
+    //状态转换为REPL_STATE_RECEIVE_CAPA_REPLY
     /* Receive REPLCONF ip-address reply. */
     if (server.repl_state == REPL_STATE_RECEIVE_IP_REPLY) {
         err = receiveSynchronousResponse(conn);
@@ -2370,6 +2395,8 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_CAPA_REPLY
+    //状态转换为REPL_STATE_SEND_PSYNC
     /* Receive CAPA reply. */
     if (server.repl_state == REPL_STATE_RECEIVE_CAPA_REPLY) {
         err = receiveSynchronousResponse(conn);
@@ -2384,6 +2411,9 @@ void syncWithMaster(connection *conn) {
         server.repl_state = REPL_STATE_SEND_PSYNC;
     }
 
+    //当前状态为REPL_STATE_SEND_PSYNC
+    //slaveTryPartialResynchronization向服务器发送部分读取的请求
+    //状态转换为REPL_STATE_RECEIVE_PSYNC_REPLY
     /* Try a partial resynchonization. If we don't have a cached master
      * slaveTryPartialResynchronization() will at least try to use PSYNC
      * to start a full resynchronization so that we get the master replid
@@ -2407,9 +2437,14 @@ void syncWithMaster(connection *conn) {
         goto error;
     }
 
+    //当前状态为REPL_STATE_RECEIVE_PSYNC_REPLY，slaveTryPartialResynchronization读取服务器返回信息
+    //获取服务器返回结果
     psync_result = slaveTryPartialResynchronization(conn,1);
+
+    //尝试增量复制，服务器还未返回结果
     if (psync_result == PSYNC_WAIT_REPLY) return; /* Try again later... */
 
+    //尝试增量复制，服务器返回PSYNC_CONTINUE或PSYNC_FULLRESYNC，继续处理
     /* Check the status of the planned failover. We expect PSYNC_CONTINUE,
      * but there is nothing technically wrong with a full resync which
      * could happen in edge cases. */
@@ -2422,6 +2457,7 @@ void syncWithMaster(connection *conn) {
         }
     }
 
+    //master遇到问题了，过一段事件再重试
     /* If the master is in an transient error, we should try to PSYNC
      * from scratch later, so go to the error path. This happens when
      * the server is loading the dataset or is not connected with its
@@ -2431,6 +2467,7 @@ void syncWithMaster(connection *conn) {
     /* Note: if PSYNC does not return WAIT_REPLY, it will take care of
      * uninstalling the read handler from the file descriptor. */
 
+    //master返回PSYNC_CONTINUE，则可以增量复制
     if (psync_result == PSYNC_CONTINUE) {
         serverLog(LL_NOTICE, "MASTER <-> REPLICA sync: Master accepted a Partial Resynchronization.");
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
@@ -2439,6 +2476,7 @@ void syncWithMaster(connection *conn) {
         return;
     }
 
+    //尝试增量复制失败，从节点也要重新同步
     /* PSYNC failed or is not supported: we want our slaves to resync with us
      * as well, if we have any sub-slaves. The master may transfer us an
      * entirely different data set and we have no way to incrementally feed
@@ -2446,6 +2484,7 @@ void syncWithMaster(connection *conn) {
     disconnectSlaves(); /* Force our slaves to resync with us as well. */
     freeReplicationBacklog(); /* Don't allow our chained slaves to PSYNC. */
 
+    //如果不支持PSYNC，命令降级为SYNC
     /* Fall back to SYNC if needed. Otherwise psync_result == PSYNC_FULLRESYNC
      * and the server.master_replid and master_initial_offset are
      * already populated. */
@@ -2458,6 +2497,7 @@ void syncWithMaster(connection *conn) {
         }
     }
 
+    //为全量复制做好准备
     /* Prepare a suitable temp file for bulk transfer */
     if (!useDisklessLoad()) {
         while(maxtries--) {
@@ -2475,6 +2515,8 @@ void syncWithMaster(connection *conn) {
         server.repl_transfer_fd = dfd;
     }
 
+    //设置read处理函数为readSyncBulkPayload
+    //状态设置为REPL_STATE_TRANSFER，开始接收全量数据
     /* Setup the non blocking download of the bulk file. */
     if (connSetReadHandler(conn, readSyncBulkPayload)
             == C_ERR)
@@ -2512,8 +2554,15 @@ write_error: /* Handle sendCommand() errors. */
     goto error;
 }
 
+//连接master
+//状态调整为server.repl_state = REPL_STATE_CONNECTING
 int connectWithMaster(void) {
     server.repl_transfer_s = server.tls_replication ? connCreateTLS() : connCreateSocket();
+
+    //调用了connSocketConnect
+    //然后调用了anetTcpNonBlockBestEffortBindConnect
+    //同时对AE_WRITABLE事件注册了处理函数syncWithMaster
+    //将conn_handler设置为connSocketEventHandler
     if (connConnect(server.repl_transfer_s, server.masterhost, server.masterport,
                 NET_FIRST_BIND_ADDR, syncWithMaster) == C_ERR) {
         serverLog(LL_WARNING,"Unable to connect to MASTER: %s",
@@ -2522,7 +2571,6 @@ int connectWithMaster(void) {
         server.repl_transfer_s = NULL;
         return C_ERR;
     }
-
 
     server.repl_transfer_lastio = server.unixtime;
     server.repl_state = REPL_STATE_CONNECTING;
@@ -2587,6 +2635,7 @@ int cancelReplicationHandshake(int reconnect) {
     return 1;
 }
 
+//状态调整为server.repl_state = REPL_STATE_CONNECT
 /* Set replication to the specified master address and port. */
 void replicationSetMaster(char *ip, int port) {
     int was_master = server.masterhost == NULL;
@@ -2607,10 +2656,13 @@ void replicationSetMaster(char *ip, int port) {
     /* Update oom_score_adj */
     setOOMScoreAdj(-1);
 
+    //强制slave节点重新进行同步
     /* Force our slaves to resync with us as well. They may hopefully be able
      * to partially resync with us, but we can notify the replid change. */
     disconnectSlaves();
     cancelReplicationHandshake(0);
+
+    //创建CacheMaster，用于PSYNC
     /* Before destroying our master state, create a cached master using
      * our own parameters, to later PSYNC with the new master. */
     if (was_master) {
@@ -2721,7 +2773,10 @@ void replicationHandleMasterDisconnection(void) {
     }
 }
 
+//初始化为server.repl_state = REPL_STATE_NONE;
+//执行replicaof masterip masterport命令后为server.repl_state = REPL_STATE_CONNECT;
 void replicaofCommand(client *c) {
+    //不能是cluster状态中
     /* SLAVEOF is not allowed in cluster mode as replication is automatically
      * configured using the current address of the master node. */
     if (server.cluster_enabled) {
@@ -2729,6 +2784,7 @@ void replicaofCommand(client *c) {
         return;
     }
 
+    //不能是故障转移状态中
     if (server.failover_state != NO_FAILOVER) {
         addReplyError(c,"REPLICAOF not allowed while failing over.");
         return;
@@ -2738,6 +2794,7 @@ void replicaofCommand(client *c) {
      * into a master. Otherwise the new master address is set. */
     if (!strcasecmp(c->argv[1]->ptr,"no") &&
         !strcasecmp(c->argv[2]->ptr,"one")) {
+        //当传入参数为no one时，成为master节点
         if (server.masterhost) {
             replicationUnsetMaster();
             sds client = catClientInfoString(sdsempty(),c);
@@ -2748,6 +2805,7 @@ void replicaofCommand(client *c) {
     } else {
         long port;
 
+        //如果已经是replica，返回错误信息
         if (c->flags & CLIENT_SLAVE)
         {
             /* If a client is already a replica they cannot run this command,
@@ -2760,6 +2818,7 @@ void replicaofCommand(client *c) {
         if ((getLongFromObjectOrReply(c, c->argv[2], &port, NULL) != C_OK))
             return;
 
+        //是否已经连接到指定服务器
         /* Check if we are already attached to the specified master */
         if (server.masterhost && !strcasecmp(server.masterhost,c->argv[1]->ptr)
             && server.masterport == port) {
@@ -2770,6 +2829,8 @@ void replicaofCommand(client *c) {
                                  "master\r\n"));
             return;
         }
+
+        //设置master信息，开启同步
         /* There was no previous master or the user specified a different one,
          * we can continue. */
         replicationSetMaster(c->argv[1]->ptr, port);
@@ -3263,7 +3324,7 @@ long long replicationGetSlaveOffset(void) {
 
 /* --------------------------- REPLICATION CRON  ---------------------------- */
 
-//每秒一次，副本定时任务
+//replication定时任务，每100ms一次
 //Redis server 执行主从复制命令，以及周期性检测主从复制状态时会触发 RDB 生成
 /* Replication cron function, called 1 time per second. */
 void replicationCron(void) {
@@ -3299,6 +3360,7 @@ void replicationCron(void) {
         freeClient(server.master);
     }
 
+    //如果尚未连接，连接到master
     /* Check if we should connect to a MASTER */
     if (server.repl_state == REPL_STATE_CONNECT) {
         serverLog(LL_NOTICE,"Connecting to MASTER %s:%d",

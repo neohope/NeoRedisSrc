@@ -2216,7 +2216,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     /* Clear the paused clients state if needed. */
     checkClientPauseTimeoutAndReturnIfPaused();
 
-    //检查传输异常
+    //replication定时任务
     /* Replication cron function -- used to reconnect to master,
      * detect transfer failures, start background RDB transfers and so forth. 
      * 
@@ -2228,11 +2228,13 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         run_with_period(1000) replicationCron();
     }
 
+    //cluster定时任务
     /* Run the Redis Cluster cron. */
     run_with_period(100) {
         if (server.cluster_enabled) clusterCron();
     }
 
+    //sentinel定时任务
     /* Run the Sentinel timer if we are in sentinel mode. */
     if (server.sentinel_mode) sentinelTimer();
 
@@ -3280,8 +3282,8 @@ void initServer(void) {
     }
     //生产LRU池
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
-    server.pubsub_channels = dictCreate(&keylistDictType,NULL);
-    server.pubsub_patterns = dictCreate(&keylistDictType,NULL);
+    server.pubsub_channels = dictCreate(&keylistDictType,NULL);                     //服务器发布的频道
+    server.pubsub_patterns = dictCreate(&keylistDictType,NULL);                     //服务器发布的pattern
     server.cronloops = 0;
     server.in_eval = 0;
     server.in_exec = 0;

@@ -282,6 +282,7 @@ extern int configOOMScoreAdjValuesDefaults[CONFIG_OOM_COUNT];
                                     buffer configuration. Just the first
                                     three: normal, slave, pubsub. */
 
+//主从复制状态清单
 /* Slave replication state. Used in server.repl_state for slaves to remember
  * what to do next. */
 typedef enum {
@@ -892,8 +893,8 @@ typedef struct client {
     blockingState bpop;     /* blocking state */
     long long woff;         /* Last write global replication offset. */
     list *watched_keys;     /* Keys WATCHED for MULTI/EXEC CAS */
-    dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
-    list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
+    dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */   //客户端订阅的频道
+    list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */   //客户端订阅的patterns
     sds peerid;             /* Cached peer ID. */
     sds sockname;           /* Cached connection target address. */
     listNode *client_list_node; /* list node in client list */
@@ -1436,14 +1437,14 @@ struct redisServer {
     int repl_diskless_sync_delay;   /* Delay to start a diskless repl BGSAVE. */
     /* Replication (slave) */
     char *masteruser;               /* AUTH with this user and masterauth with master */
-    sds masterauth;                 /* AUTH with this password with master */
-    char *masterhost;               /* Hostname of master */
-    int masterport;                 /* Port of master */
+    sds masterauth;                 /* AUTH with this password with master */             //主从复制时，验证密码
+    char *masterhost;               /* Hostname of master */                              //主从复制时，主服务器地址
+    int masterport;                 /* Port of master */                                  //主从复制时，主服务器端口
     int repl_timeout;               /* Timeout after N seconds of master idle */
-    client *master;     /* Client that is master for this slave */
-    client *cached_master; /* Cached master to be reused for PSYNC. */
+    client *master;     /* Client that is master for this slave */                        //从库上用来和主库连接的客户端
+    client *cached_master; /* Cached master to be reused for PSYNC. */                    //从库上缓存的主库信息
     int repl_syncio_timeout; /* Timeout for synchronous I/O calls */
-    int repl_state;          /* Replication status if the instance is a slave */
+    int repl_state;          /* Replication status if the instance is a slave */          //主从复制时，从库状态
     off_t repl_transfer_size; /* Size of RDB to read from master during sync. */
     off_t repl_transfer_read; /* Amount of RDB read from master during sync. */
     off_t repl_transfer_last_fsync_off; /* Offset when we fsync-ed last time. */
