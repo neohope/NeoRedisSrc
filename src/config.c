@@ -581,6 +581,7 @@ void loadServerConfigFromString(char *config) {
                     err = "sentinel directive while not in sentinel mode";
                     goto loaderr;
                 }
+                //哨兵配置
                 queueSentinelConfig(argv+1,argc-1,linenum,lines[i]);
             }
         } else {
@@ -613,6 +614,7 @@ loaderr:
     exit(1);
 }
 
+//加载配置文件
 /* Load the server configuration from the specified filename.
  * The function appends the additional configuration directives stored
  * in the 'options' string to the config file before loading.

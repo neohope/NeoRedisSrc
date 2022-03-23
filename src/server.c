@@ -6507,6 +6507,7 @@ int main(int argc, char **argv) {
         ACLLoadUsersAtStartup();
         //启动后台IO线程
         InitServerLast();
+        //以哨兵模式运行
         sentinelIsRunning();
         if (server.supervised_mode == SUPERVISED_SYSTEMD) {
             redisCommunicateSystemd("STATUS=Ready to accept connections\n");
