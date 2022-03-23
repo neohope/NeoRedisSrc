@@ -2234,7 +2234,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         if (server.cluster_enabled) clusterCron();
     }
 
-    //sentinel定时任务
+    //哨兵定时任务
     /* Run the Sentinel timer if we are in sentinel mode. */
     if (server.sentinel_mode) sentinelTimer();
 
@@ -3282,7 +3282,7 @@ void initServer(void) {
     }
     //生产LRU池
     evictionPoolAlloc(); /* Initialize the LRU keys pool. */
-    server.pubsub_channels = dictCreate(&keylistDictType,NULL);                     //服务器发布的频道
+    server.pubsub_channels = dictCreate(&keylistDictType,NULL);                     //服务器发布的频道，频道名称为key，该频道全部订阅者为value
     server.pubsub_patterns = dictCreate(&keylistDictType,NULL);                     //服务器发布的pattern
     server.cronloops = 0;
     server.in_eval = 0;
