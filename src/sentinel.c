@@ -124,8 +124,8 @@ typedef struct instanceLink {
     int refcount;          /* Number of sentinelRedisInstance owners. */
     int disconnected;      /* Non-zero if we need to reconnect cc or pc. */
     int pending_commands;  /* Number of commands sent waiting for a reply. */
-    redisAsyncContext *cc; /* Hiredis context for commands. */
-    redisAsyncContext *pc; /* Hiredis context for Pub / Sub. */
+    redisAsyncContext *cc; /* Hiredis context for commands. */                              //用于发送命令的连接
+    redisAsyncContext *pc; /* Hiredis context for Pub / Sub. */                             //用于发送pub-sub消息的连接
     mstime_t cc_conn_time; /* cc connection time. */
     mstime_t pc_conn_time; /* pc connection time. */
     mstime_t pc_last_activity; /* Last time we received any message. */
@@ -2403,6 +2403,7 @@ static int instanceLinkNegotiateTLS(redisAsyncContext *context) {
     return C_OK;
 }
 
+//尝试与断掉的实例重新建立连接
 /* Create the async connections for the instance link if the link
  * is disconnected. Note that link->disconnected is true even if just
  * one of the two links (commands and pub/sub) is missing. */
@@ -2415,6 +2416,7 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
     if (now - ri->link->last_reconn_time < SENTINEL_PING_PERIOD) return;
     ri->link->last_reconn_time = now;
 
+    //尝试重新建立命令连接
     /* Commands connection. */
     if (link->cc == NULL) {
         link->cc = redisAsyncConnectBind(ri->addr->ip,ri->addr->port,NET_FIRST_BIND_ADDR);
@@ -2445,6 +2447,8 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
             sentinelSendPing(ri);
         }
     }
+
+    //尝试重新建立订阅发布连接
     /* Pub / Sub */
     if ((ri->flags & (SRI_MASTER|SRI_SLAVE)) && link->pc == NULL) {
         link->pc = redisAsyncConnectBind(ri->addr->ip,ri->addr->port,NET_FIRST_BIND_ADDR);
@@ -2483,6 +2487,7 @@ void sentinelReconnectInstance(sentinelRedisInstance *ri) {
             }
         }
     }
+
     /* Clear the disconnected status only if we have both the connections
      * (or just the commands connection if this is a sentinel instance). */
     if (link->cc && (ri->flags & SRI_SENTINEL || link->pc))
@@ -4176,16 +4181,18 @@ void sentinelPublishCommand(client *c) {
 
 /* ===================== SENTINEL availability checks ======================= */
 
-//主节点主观下线
+//节点是否主观下线
 /* Is this instance down from our point of view? */
 void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
     mstime_t elapsed = 0;
 
+    //计算节点没有反应的时间
     if (ri->link->act_ping_time)
         elapsed = mstime() - ri->link->act_ping_time;
     else if (ri->link->disconnected)
         elapsed = mstime() - ri->link->last_avail_time;
 
+    //活跃度不够时，关闭连接，以便重新连接
     /* Check if we are in need for a reconnection of one of the
      * links, because we are detecting low activity.
      *
@@ -4204,6 +4211,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
         instanceLinkCloseConnection(ri->link,ri->link->cc);
     }
 
+    //活跃度不够时，关闭订阅发布连接，以便重新连接
     /* 2) Check if the pubsub link seems connected, was connected not less
      *    than SENTINEL_MIN_LINK_RECONNECT_PERIOD, but still we have no
      *    activity in the Pub/Sub channel for more than
@@ -4217,6 +4225,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
         instanceLinkCloseConnection(ri->link,ri->link->pc);
     }
 
+    //节点主观下线
     /* Update the SDOWN flag. We believe the instance is SDOWN if:
      *
      * 1) It is not replying.
@@ -4229,6 +4238,8 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
          mstime() - ri->role_reported_time >
           (ri->down_after_period+SENTINEL_INFO_PERIOD*2)))
     {
+        //条件一：当前距离上次发送 PING 的时长已经超过 down_after_period 阈值，还没有收到回复，默认值是 30s。
+        //条件二：哨兵认为当前实例是主节点，但是这个节点向哨兵报告它将成为从节点，并且在 down_after_period 时长，再加上两个 INFO 命令间隔后，该节点还是没有转换成功。
         //节点主观下线
         /* Is subjectively down */
         if ((ri->flags & SRI_S_DOWN) == 0) {
@@ -4246,6 +4257,7 @@ void sentinelCheckSubjectivelyDown(sentinelRedisInstance *ri) {
     }
 }
 
+//主节点是否客观下线
 /* Is this instance down according to the configured quorum?
  *
  * Note that ODOWN is a weak quorum, it only means that enough Sentinels
@@ -4257,6 +4269,7 @@ void sentinelCheckObjectivelyDown(sentinelRedisInstance *master) {
     dictEntry *de;
     unsigned int quorum = 0, odown = 0;
 
+    //如果判断主节点sdown的数量超过了master->quorum，odown就发生了
     if (master->flags & SRI_S_DOWN) {
         /* Is down for enough sentinels? */
         quorum = 1; /* the current sentinel. */
@@ -4329,6 +4342,7 @@ void sentinelReceiveIsMasterDownReply(redisAsyncContext *c, void *reply, void *p
     }
 }
 
+//询问其他节点，主节点是否已经下线
 /* If we think the master is down, we start sending
  * SENTINEL IS-MASTER-DOWN-BY-ADDR requests to other sentinels
  * in order to get the replies that allow to reach the quorum
@@ -4591,22 +4605,26 @@ int sentinelSendSlaveOf(sentinelRedisInstance *ri, const sentinelAddr *addr) {
     return C_OK;
 }
 
+//开始故障转移
 /* Setup the master state to start a failover. */
 void sentinelStartFailover(sentinelRedisInstance *master) {
     serverAssert(master->flags & SRI_MASTER);
 
     master->failover_state = SENTINEL_FAILOVER_STATE_WAIT_START;
     master->flags |= SRI_FAILOVER_IN_PROGRESS;
-    master->failover_epoch = ++sentinel.current_epoch;
+
     //进入新纪元
+    master->failover_epoch = ++sentinel.current_epoch;
     sentinelEvent(LL_WARNING,"+new-epoch",master,"%llu",
         (unsigned long long) sentinel.current_epoch);
-    //开始故障切换
+
+    //消息通知其他节点，开始故障切换
     sentinelEvent(LL_WARNING,"+try-failover",master,"%@");
     master->failover_start_time = mstime()+rand()%SENTINEL_MAX_DESYNC;
     master->failover_state_change_time = mstime();
 }
 
+//是否需要故障转移
 /* This function checks if there are the conditions to start the failover,
  * that is:
  *
@@ -4644,6 +4662,7 @@ int sentinelStartFailoverIfNeeded(sentinelRedisInstance *master) {
         return 0;
     }
 
+    //开始故障转移
     sentinelStartFailover(master);
     return 1;
 }
@@ -4984,6 +5003,7 @@ void sentinelFailoverSwitchToPromotedSlave(sentinelRedisInstance *master) {
     sentinelResetMasterAndChangeAddress(master,ref->addr->hostname,ref->addr->port);
 }
 
+//故障转移状态机
 void sentinelFailoverStateMachine(sentinelRedisInstance *ri) {
     serverAssert(ri->flags & SRI_MASTER);
 
@@ -5031,13 +5051,19 @@ void sentinelAbortFailover(sentinelRedisInstance *ri) {
  * in design. The function is called every second.
  * -------------------------------------------------------------------------- */
 
+//哨兵入口函数
 /* Perform scheduled operations for the specified Redis instance. */
 void sentinelHandleRedisInstance(sentinelRedisInstance *ri) {
     /* ========== MONITORING HALF ============ */
     /* Every kind of instance */
+
+    //尝试与断掉的实例重新建立连接，包括命令连接以及订阅发布连接
     sentinelReconnectInstance(ri);
+
+    //发送info消息，ping消息，发送hello消息
     sentinelSendPeriodicCommands(ri);
 
+    //tilt时，哨兵只会定期收集信息，而不会执行故障切换流程。
     /* ============== ACTING HALF ============= */
     /* We don't proceed with the acting half if we are in TILT mode.
      * TILT happens when we find something odd with the time, like a
@@ -5048,6 +5074,7 @@ void sentinelHandleRedisInstance(sentinelRedisInstance *ri) {
         sentinelEvent(LL_WARNING,"-tilt",NULL,"#tilt mode exited");
     }
 
+    //是否主观下线
     /* Every kind of instance */
     sentinelCheckSubjectivelyDown(ri);
 
@@ -5058,14 +5085,19 @@ void sentinelHandleRedisInstance(sentinelRedisInstance *ri) {
 
     /* Only masters */
     if (ri->flags & SRI_MASTER) {
+        //判断主节点是否客观下线
         sentinelCheckObjectivelyDown(ri);
+        //判断是否需要开始故障转移
         if (sentinelStartFailoverIfNeeded(ri))
             sentinelAskMasterStateToOtherSentinels(ri,SENTINEL_ASK_FORCED);
+        //故障转移状态机
         sentinelFailoverStateMachine(ri);
+        //获取其他哨兵对主节点状态的判断
         sentinelAskMasterStateToOtherSentinels(ri,SENTINEL_NO_FLAGS);
     }
 }
 
+//入参为sentinel.master
 /* Perform scheduled operations for all the instances in the dictionary.
  * Recursively call the function against dictionaries of slaves. */
 void sentinelHandleDictOfRedisInstances(dict *instances) {
@@ -5078,7 +5110,10 @@ void sentinelHandleDictOfRedisInstances(dict *instances) {
     while((de = dictNext(di)) != NULL) {
         sentinelRedisInstance *ri = dictGetVal(de);
 
+        //依次调用sentinelHandleRedisInstance处理实例
         sentinelHandleRedisInstance(ri);
+
+        //如果是主节点，还要处理其全部的slaves、哨兵
         if (ri->flags & SRI_MASTER) {
             sentinelHandleDictOfRedisInstances(ri->slaves);
             sentinelHandleDictOfRedisInstances(ri->sentinels);
@@ -5125,7 +5160,10 @@ void sentinelCheckTiltCondition(void) {
 
 //哨兵定时任务
 void sentinelTimer(void) {
+    //当哨兵连续两次的时间事件处理间隔时长为负值，或是间隔时长过长，那么哨兵就会进入 TILT 模式。
+    //在该模式下，哨兵只会定期发送命令收集信息，而不会执行故障切换流程。
     sentinelCheckTiltCondition();
+    
     //订阅hello频道路径
     //sentinelTimer->sentinelHandleDictOfRedisInstances->sentinelHandleRedisInstance->
     //sentinelReconnectInstance->redisAsyncCommand
@@ -5134,11 +5172,18 @@ void sentinelTimer(void) {
     //发布信息路径
     //sentinelTimer->sentinelHandleDictOfRedisInstances->sentinelHandleRedisInstance->
     //sentinelSendPeriodicCommands
+    //
+    //节点信息选举也在这里
     sentinelHandleDictOfRedisInstances(sentinel.masters);
+
+    //执行待执行的脚本
     sentinelRunPendingScripts();
+    //收集结束的脚本
     sentinelCollectTerminatedScripts();
+    //kill超时的脚本
     sentinelKillTimedoutScripts();
 
+    //随机修改sentinelTimer执行频率，防止同时开启的实例，同时发起投票
     /* We continuously change the frequency of the Redis "timer interrupt"
      * in order to desynchronize every Sentinel from every other.
      * This non-determinism avoids that Sentinels started at the same time
