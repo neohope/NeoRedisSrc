@@ -622,6 +622,7 @@ void freeClusterLink(clusterLink *link) {
     zfree(link);
 }
 
+//接收连接时，注册clusterReadHandler
 static void clusterConnAcceptHandler(connection *conn) {
     clusterLink *link;
 
@@ -1713,6 +1714,7 @@ void clusterUpdateSlotsConfigWith(clusterNode *sender, uint64_t senderConfigEpoc
     }
 }
 
+//处理gossip的包
 /* When this function is called, there is a packet to process starting
  * at node->rcvbuf. Releasing the buffer is up to the caller, so this
  * function should just handle the higher level stuff of processing the
@@ -1835,6 +1837,7 @@ int clusterProcessPacket(clusterLink *link) {
     if (type == CLUSTERMSG_TYPE_PING || type == CLUSTERMSG_TYPE_MEET) {
         serverLog(LL_DEBUG,"Ping packet received: %p", (void*)link->node);
 
+        //处理PING和MEET消息
         /* We use incoming MEET messages in order to set the address
          * for 'myself', since only other cluster nodes will send us
          * MEET messages on handshakes, when the cluster joins, or
@@ -1861,6 +1864,7 @@ int clusterProcessPacket(clusterLink *link) {
             }
         }
 
+        //处理Meet消息，将发送Meet消息的节点加入本地记录的节点列表中
         /* Add this node if it is new for us and the msg type is MEET.
          * In this stage we don't try to add the node with the right
          * flags, slaveof pointer, and so forth, as this details will be
@@ -1883,10 +1887,12 @@ int clusterProcessPacket(clusterLink *link) {
         if (!sender && type == CLUSTERMSG_TYPE_MEET)
             clusterProcessGossipSection(hdr,link);
 
+        //调用clusterSendPing函数返回Pong消息
         /* Anyway reply with a PONG */
         clusterSendPing(link,CLUSTERMSG_TYPE_PONG);
     }
 
+    //处理配置信息
     /* PING, PONG, MEET: process config information. */
     if (type == CLUSTERMSG_TYPE_PING || type == CLUSTERMSG_TYPE_PONG ||
         type == CLUSTERMSG_TYPE_MEET)
@@ -2039,6 +2045,7 @@ int clusterProcessPacket(clusterLink *link) {
             }
         }
 
+        //如果发送消息的节点是主节点，更新本实例记录的slots分布信息
         /* 1) If the sender of the message is a master, and we detected that
          *    the set of slots it claims changed, scan the slots to see if we
          *    need to update our configuration. */
@@ -2098,6 +2105,7 @@ int clusterProcessPacket(clusterLink *link) {
             clusterHandleConfigEpochCollision(sender);
         }
 
+        //调用clusterProcessGossipSection函数处理Ping或Pong消息的消息体，也是就gossip相关信息
         /* Get info from the gossip section */
         if (sender) clusterProcessGossipSection(hdr,link);
     } else if (type == CLUSTERMSG_TYPE_FAIL) {
@@ -2287,6 +2295,7 @@ void clusterLinkConnectHandler(connection *conn) {
             node->name, node->ip, node->cport);
 }
 
+//读取信息，包括ping消息
 /* Read data. Try to read the first field of the header first to check the
  * full length of the packet. When a whole packet is in memory this function
  * will call the function to process the packet. And so forth. */
@@ -2298,6 +2307,8 @@ void clusterReadHandler(connection *conn) {
     unsigned int readlen, rcvbuflen;
 
     while(1) { /* Read as long as there is data to read. */
+
+        //读取一个包
         rcvbuflen = link->rcvbuf_len;
         if (rcvbuflen < 8) {
             /* First, obtain the first 8 bytes to get the full message
@@ -2347,6 +2358,7 @@ void clusterReadHandler(connection *conn) {
             rcvbuflen += nread;
         }
 
+        //包接收完毕，进行处理
         /* Total length obtained? Process this packet. */
         if (rcvbuflen >= 8 && rcvbuflen == ntohl(hdr->totlen)) {
             if (clusterProcessPacket(link)) {
@@ -2362,6 +2374,7 @@ void clusterReadHandler(connection *conn) {
     }
 }
 
+//将数据放到发送缓存中，等待发送
 /* Put stuff into the send buffer.
  *
  * It is guaranteed that this function will never have as a side effect
@@ -2504,6 +2517,7 @@ void clusterSetGossipEntry(clusterMsg *hdr, int i, clusterNode *n) {
     gossip->notused1 = 0;
 }
 
+//发送ping消息
 /* Send a PING or PONG packet to the specified node, making sure to add enough
  * gossip information. */
 void clusterSendPing(clusterLink *link, int type) {
@@ -2512,12 +2526,26 @@ void clusterSendPing(clusterLink *link, int type) {
     int gossipcount = 0; /* Number of gossip sections added so far. */
     int wanted; /* Number of gossip sections we want to append if possible. */
     int totlen; /* Total packet length. */
+
+    //一个Ping消息中会包含多个clusterMsgDataGossip结构体
+    //而每个clusterMsgDataGossip结构体实际对应了一个节点的信息
+    //wanted确定了要写入多少个节点
     /* freshnodes is the max number of nodes we can hope to append at all:
      * nodes available minus two (ourself and the node we are sending the
      * message to). However practically there may be less valid nodes since
      * nodes in handshake state, disconnected, are not considered. */
     int freshnodes = dictSize(server.cluster->nodes)-2;
 
+    //为何选择了1/10的节点
+    //在clusterCron中，有一个强制PING策略：
+    //如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。 
+    //
+    //那在cluster-node-timeout时间内会收到2来2回共4次心跳包
+    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包。
+    //这8个心跳包中，每个心跳包中实例个数设置为集群的 1/10，那在故障转移期间就能收到集群 80%（8*1/10）数量的节点发来的故障状态信息了。
+    //
+    //即使在一个很差的情况下：每次随机选择5个节点，从中选出1个最长没通信的节点发送消息，而每次选择的都是通过一节点，也能最少与80%数量的节点通信，
+    //即使这些节点有重复，也能满足集群大部分节点发来的节点故障情况。
     /* How many gossip sections we want to add? 1/10 of the number of nodes
      * and anyway at least 3. Why 1/10?
      *
@@ -2563,24 +2591,32 @@ void clusterSendPing(clusterLink *link, int type) {
     buf = zcalloc(totlen);
     hdr = (clusterMsg*) buf;
 
+    //如果当前是Ping消息，那么在发送目标节点的结构中记录Ping消息的发送时间
     /* Populate the header. */
     if (link->node && type == CLUSTERMSG_TYPE_PING)
         link->node->ping_sent = mstime();
+    
+    //构建Ping消息头，填充clusterMsg相关内容
     clusterBuildMessageHdr(hdr,type);
 
+    //填充gossip消息体，最多循环maxiterations次
     /* Populate the gossip fields */
     int maxiterations = wanted*3;
     while(freshnodes > 0 && gossipcount < wanted && maxiterations--) {
         dictEntry *de = dictGetRandomKey(server.cluster->nodes);
         clusterNode *this = dictGetVal(de);
 
+        //排除自己
         /* Don't include this node: the whole packet header is about us
          * already, so we just gossip about other nodes. */
         if (this == myself) continue;
 
+        //不要PFAIL，这些节点放到最后面
         /* PFAIL nodes will be added later. */
         if (this->flags & CLUSTER_NODE_PFAIL) continue;
 
+        //不要CLUSTER_NODE_HANDSHAKE、CLUSTER_NODE_NOADDR状态的节点
+        //不要断开连接的节点
         /* In the gossip section don't include:
          * 1) Nodes in HANDSHAKE state.
          * 3) Nodes with the NOADDR flag set.
@@ -2593,15 +2629,18 @@ void clusterSendPing(clusterLink *link, int type) {
             continue;
         }
 
+        //不要重复添加
         /* Do not add a node we already have. */
         if (clusterNodeIsInGossipSection(hdr,gossipcount,this)) continue;
 
+        //添加一个节点，调用clusterSetGossipEntry设置Ping消息体
         /* Add it */
         clusterSetGossipEntry(hdr,gossipcount,this);
         freshnodes--;
         gossipcount++;
     }
 
+    //把PFAIL节点放到最后面
     /* If there are PFAIL nodes, add them at the end. */
     if (pfail_wanted) {
         dictIterator *di;
@@ -2630,6 +2669,9 @@ void clusterSendPing(clusterLink *link, int type) {
     totlen += (sizeof(clusterMsgDataGossip)*gossipcount);
     hdr->count = htons(gossipcount);
     hdr->totlen = htonl(totlen);
+
+    //发送Ping消息，buf中就是clusterMsg
+    //这里只是将数据放到发送缓存中，等待发送
     clusterSendMessage(link,buf,totlen);
     zfree(buf);
 }
@@ -3468,6 +3510,7 @@ void clusterHandleManualFailover(void) {
  * CLUSTER cron job
  * -------------------------------------------------------------------------- */
 
+//cluster定时任务，每100ms执行依次
 /* This is executed 10 times every second */
 void clusterCron(void) {
     dictIterator *di;
@@ -3481,6 +3524,7 @@ void clusterCron(void) {
     static unsigned long long iteration = 0;
     mstime_t handshake_timeout;
 
+    //函数执行次数统计
     iteration++; /* Number of times this function was called so far. */
 
     /* We want to take myself->ip in sync with the cluster-announce-ip option.
@@ -3522,6 +3566,7 @@ void clusterCron(void) {
     /* Update myself flags. */
     clusterUpdateMyselfFlags();
 
+    //对于断掉的节点尝试重连
     /* Check if we have disconnected nodes and re-establish the connection.
      * Also update a few stats while we are here, that can be used to make
      * better decisions in other part of the code. */
@@ -3568,6 +3613,8 @@ void clusterCron(void) {
     }
     dictReleaseIterator(di);
 
+    //每10次循环，随机找5个节点，从中找到最早返回pong的节点，ping一下
+    //也就是每隔1s，ping一个返回pong比较久的随机节点
     /* Ping some random node 1 time every 10 iterations, so that we usually ping
      * one random node every second. */
     if (!(iteration % 10)) {
@@ -3579,15 +3626,20 @@ void clusterCron(void) {
             de = dictGetRandomKey(server.cluster->nodes);
             clusterNode *this = dictGetVal(de);
 
+            //不向断连的节点、当前节点和正在握手的节点发送Ping消息
             /* Don't ping nodes disconnected or with a ping currently active. */
             if (this->link == NULL || this->ping_sent != 0) continue;
             if (this->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_HANDSHAKE))
                 continue;
+
+            //从5个节点中，找到向当前节点发送Pong消息最早的节点
             if (min_pong_node == NULL || min_pong > this->pong_received) {
                 min_pong_node = this;
                 min_pong = this->pong_received;
             }
         }
+
+        //如果找到了最早向当前节点发送Pong消息的节点，那么调用clusterSendPing函数向该节点发送Ping消息
         if (min_pong_node) {
             serverLog(LL_DEBUG,"Pinging node %.40s", min_pong_node->name);
             clusterSendPing(min_pong_node->link, CLUSTERMSG_TYPE_PING);
@@ -3648,6 +3700,7 @@ void clusterCron(void) {
             freeClusterLink(node->link);
         }
 
+        //强制PING策略：如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。 
         /* If we have currently no active ping in this instance, and the
          * received PONG is older than half the cluster timeout, send
          * a new ping now, to ensure all the nodes are pinged without
