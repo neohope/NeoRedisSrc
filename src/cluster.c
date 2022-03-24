@@ -2537,15 +2537,29 @@ void clusterSendPing(clusterLink *link, int type) {
     int freshnodes = dictSize(server.cluster->nodes)-2;
 
     //为何选择了1/10的节点
+    //
     //在clusterCron中，有一个强制PING策略：
     //如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。 
     //
     //那在cluster-node-timeout时间内会收到2来2回共4次心跳包
-    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包。
-    //这8个心跳包中，每个心跳包中实例个数设置为集群的 1/10，那在故障转移期间就能收到集群 80%（8*1/10）数量的节点发来的故障状态信息了。
+    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包
     //
     //即使在一个很差的情况下：每次随机选择5个节点，从中选出1个最长没通信的节点发送消息，而每次选择的都是通过一节点，也能最少与80%数量的节点通信，
     //即使这些节点有重复，也能满足集群大部分节点发来的节点故障情况。
+    //
+    //
+    //为何选择了1/10的节点
+    //
+    //在clusterCron中，有一个强制PING策略：
+    //如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。
+    //在cluster-node-timeout时间内会收到2来2回共4次心跳包
+    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包
+    //
+    //对于一个PFAIL节点
+    //在一个100个master的集群中，在cluster-node-timeout*2时间内，会收到这么多个包：
+    //PROB * GOSSIP_ENTRIES_PER_PACKET * TOTAL_PACKETS
+    //1%*10*(8*100)=80
+    //
     /* How many gossip sections we want to add? 1/10 of the number of nodes
      * and anyway at least 3. Why 1/10?
      *
