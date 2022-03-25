@@ -1417,11 +1417,11 @@ struct redisServer {
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
-    char *repl_backlog;             /* Replication backlog for partial syncs */
-    long long repl_backlog_size;    /* Backlog circular buffer size */
-    long long repl_backlog_histlen; /* Backlog actual data length */
-    long long repl_backlog_idx;     /* Backlog circular buffer current offset,
-                                       that is the next byte will'll write to.*/
+    char *repl_backlog;             /* Replication backlog for partial syncs */          //基于字符数组的循环缓冲区
+    long long repl_backlog_size;    /* Backlog circular buffer size */                   //循环缓冲区总长度
+    long long repl_backlog_histlen; /* Backlog actual data length */                     //循环缓冲区中当前累积的数据的长度
+    long long repl_backlog_idx;     /* Backlog circular buffer current offset,           //循环缓冲区的写指针位置
+                                       that is the next byte will'll write to.*          //循环缓冲区最早保存的数据的首字节在全局范围内的偏移
     long long repl_backlog_off;     /* Replication "master offset" of first
                                        byte in the replication backlog buffer.*/
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
