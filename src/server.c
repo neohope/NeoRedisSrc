@@ -4115,6 +4115,8 @@ int processCommand(client *c) {
     }
 
     //CLUSTER模式，重定向命令
+    //命令发送方为master时，不执行重定向
+    //命令没有带key参数时，而且不是exec命令，不执行重定向
     /* If cluster is enabled perform the cluster redirection here.
      * However we don't perform the redirection if:
      * 1) The sender of this command is our master.
@@ -4128,6 +4130,7 @@ int processCommand(client *c) {
     {
         int hashslot;
         int error_code;
+        //查找能处理命令的节点，判断是否需要重定向
         clusterNode *n = getNodeByQuery(c,c->cmd,c->argv,c->argc,
                                         &hashslot,&error_code);
         if (n == NULL || n != server.cluster->myself) {
@@ -4136,6 +4139,8 @@ int processCommand(client *c) {
             } else {
                 flagTransaction(c);
             }
+
+            //执行请求重定向
             clusterRedirectClient(c,n,hashslot,error_code);
             c->cmd->rejected_calls++;
             return C_OK;

@@ -2555,7 +2555,7 @@ void clusterSendPing(clusterLink *link, int type) {
     // 为何不再低一些：在正常的redis cluster集群中，有一些slave节点，不会参与投票，所以保持了这样一个比例。
     // 
     // 此外，这里就是个估算，别纠结为何用100不用99或98什么的，不影响结论。
-    // 也不用纠结这80个包，如果收发全部重叠，不就只有40个节点交换信息吗，估算时不要考虑小概率时间。
+    // 也不用纠结这80个包，如果收发全部重叠，不就只有40个节点交换信息吗，估算时不要考虑小概率事件。
     //
     /* How many gossip sections we want to add? 1/10 of the number of nodes
      * and anyway at least 3. Why 1/10?
@@ -5742,6 +5742,7 @@ void readwriteCommand(client *c) {
     addReply(c,shared.ok);
 }
 
+//查找能处理命令的节点，判断是否需要重定向
 /* Return the pointer to the cluster node that is able to serve the command.
  * For the function to succeed the command should only target either:
  *
