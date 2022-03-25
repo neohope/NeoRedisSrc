@@ -2536,29 +2536,26 @@ void clusterSendPing(clusterLink *link, int type) {
      * nodes in handshake state, disconnected, are not considered. */
     int freshnodes = dictSize(server.cluster->nodes)-2;
 
-    //为何选择了1/10的节点
-    //
-    //在clusterCron中，有一个强制PING策略：
-    //如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。 
-    //
-    //那在cluster-node-timeout时间内会收到2来2回共4次心跳包
-    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包
-    //
-    //即使在一个很差的情况下：每次随机选择5个节点，从中选出1个最长没通信的节点发送消息，而每次选择的都是通过一节点，也能最少与80%数量的节点通信，
-    //即使这些节点有重复，也能满足集群大部分节点发来的节点故障情况。
-    //
-    //
-    //为何选择了1/10的节点
-    //
-    //在clusterCron中，有一个强制PING策略：
-    //如果和实例最近通信时间超过了 cluster-node-timeout/2，那会立即向这个实例发送 PING 消息。
-    //在cluster-node-timeout时间内会收到2来2回共4次心跳包
-    //而Redis Cluster计算故障转移超时时间是cluster-node-timeout*2，那这段时间内就能收到4来4回共8心跳包
-    //
-    //对于一个PFAIL节点
-    //在一个100个master的集群中，在cluster-node-timeout*2时间内，会收到这么多个包：
-    //PROB * GOSSIP_ENTRIES_PER_PACKET * TOTAL_PACKETS
-    //1%*10*(8*100)=80
+    // 为何选择了1/10的节点，在源码注释里其实就有，分两部分解释一下：
+    // 
+    // 一、在clusterCron函数中，有一个强制PING策略：
+    // 如果节点A和节点B最后通信时间超过了 cluster-node-timeout/2，节点A会立即向节点B发送 PING 消息。所以，在在cluster-node-timeout时间内，节点A和节点B最少也会收发2来2回共4次心跳包。
+    // Redis Cluster计算故障转移确认时间是cluster-node-timeout*2，那这段时间内节点A和节点B最少会收发4来4回共8个心跳包。
+    // 
+    // 二、在一个100个全master节点的集群中，有一个正常节点A，一个被A判断为PFAIL节点C，在没有pfail_wanted的时候：
+    // 对于节点A，在cluster-node-timeout*2的故障转移确认时间内，最少也可以与他节点交换关于C节点到这么多个包：
+    // PROB * GOSSIP_ENTRIES_PER_PACKET * TOTAL_PACKETS
+    // (节点C被包含在一个entry中的几率，100选1，也就是1%)*(一个GOSSIP包中的entry数量，10分之1，100个节点网络中是10)*（其他节点与A交换的最小总包数，节点数*8）
+    // 1%*10*(100*8)=80
+    // 由于这些包都是随机选择entry的，节点A收发的这80个包含C节点信息的包，大概率覆盖了100个节点的多数节点，也就可以确实证明了C点有问题了。
+    // 
+    // 为何不再高一些：现在这个比例已经够高了，如果再高一些，只会增加网络负担而已。
+    // 同时，在4.x的源码中，已经补充了pfail_wanted的代码，会让PFAIL节点更快的传播。
+    // 
+    // 为何不再低一些：在正常的redis cluster集群中，有一些slave节点，不会参与投票，所以保持了这样一个比例。
+    // 
+    // 此外，这里就是个估算，别纠结为何用100不用99或98什么的，不影响结论。
+    // 也不用纠结这80个包，如果收发全部重叠，不就只有40个节点交换信息吗，估算时不要考虑小概率时间。
     //
     /* How many gossip sections we want to add? 1/10 of the number of nodes
      * and anyway at least 3. Why 1/10?
