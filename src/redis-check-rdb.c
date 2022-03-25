@@ -153,6 +153,7 @@ void rdbCheckSetupSignals(void) {
     sigaction(SIGABRT, &act, NULL);
 }
 
+//redis_check_rdb作业函数
 /* Check the specified RDB file. Return 0 if the RDB looks sane, otherwise
  * 1 is returned.
  * The file is specified as a filename in 'rdbfilename' if 'fp' is not NULL,
@@ -171,6 +172,8 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
     rioInitWithFile(&rdb,fp);
     rdbstate.rio = &rdb;
     rdb.update_cksum = rdbLoadProgressCallback;
+
+    //读取前9个字符，前5个是魔数，然后是版本号
     if (rioRead(&rdb,buf,9) == 0) goto eoferr;
     buf[9] = '\0';
     if (memcmp(buf,"REDIS",5) != 0) {
@@ -189,10 +192,13 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
 
         /* Read type. */
         rdbstate.doing = RDB_CHECK_DOING_READ_TYPE;
+
+        //读取操作码
+        //根据操作码，调用对应的rdbLoadXXX函数读取后续内容
         if ((type = rdbLoadType(&rdb)) == -1) goto eoferr;
 
         /* Handle special types. */
-        if (type == RDB_OPCODE_EXPIRETIME) {
+        if (type == RDB_OPCODE_EXPIRETIME) {                                       //表示过期时间的操作码
             rdbstate.doing = RDB_CHECK_DOING_READ_EXPIRE;
             /* EXPIRETIME: load an expire associated with the next key
              * to load. Note that after loading an expire we need to
@@ -201,33 +207,33 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
             expiretime *= 1000;
             if (rioGetReadError(&rdb)) goto eoferr;
             continue; /* Read next opcode. */
-        } else if (type == RDB_OPCODE_EXPIRETIME_MS) {
+        } else if (type == RDB_OPCODE_EXPIRETIME_MS) {                             //表示毫秒记录的过期时间操的作码
             /* EXPIRETIME_MS: milliseconds precision expire times introduced
              * with RDB v3. Like EXPIRETIME but no with more precision. */
             rdbstate.doing = RDB_CHECK_DOING_READ_EXPIRE;
             expiretime = rdbLoadMillisecondTime(&rdb, rdbver);
             if (rioGetReadError(&rdb)) goto eoferr;
             continue; /* Read next opcode. */
-        } else if (type == RDB_OPCODE_FREQ) {
+        } else if (type == RDB_OPCODE_FREQ) {                                      //表示LFU访问频率的操作码
             /* FREQ: LFU frequency. */
             uint8_t byte;
             if (rioRead(&rdb,&byte,1) == 0) goto eoferr;
             continue; /* Read next opcode. */
-        } else if (type == RDB_OPCODE_IDLE) {
+        } else if (type == RDB_OPCODE_IDLE) {                                      //表示LRU空闲时间的操作码
             /* IDLE: LRU idle time. */
             if (rdbLoadLen(&rdb,NULL) == RDB_LENERR) goto eoferr;
             continue; /* Read next opcode. */
-        } else if (type == RDB_OPCODE_EOF) {
+        } else if (type == RDB_OPCODE_EOF) {                                       //表示RDB文件结束的操作码
             /* EOF: End of file, exit the main loop. */
             break;
-        } else if (type == RDB_OPCODE_SELECTDB) {
+        } else if (type == RDB_OPCODE_SELECTDB) {                                 //表示数据库选择的操作码
             /* SELECTDB: Select the specified database. */
             rdbstate.doing = RDB_CHECK_DOING_READ_LEN;
             if ((dbid = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
                 goto eoferr;
             rdbCheckInfo("Selecting DB ID %llu", (unsigned long long)dbid);
             continue; /* Read type again. */
-        } else if (type == RDB_OPCODE_RESIZEDB) {
+        } else if (type == RDB_OPCODE_RESIZEDB) {                                 //表示全局哈希表键值对数量的操作码
             /* RESIZEDB: Hint about the size of the keys in the currently
              * selected data base, in order to avoid useless rehashing. */
             uint64_t db_size, expires_size;
@@ -237,7 +243,7 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
             if ((expires_size = rdbLoadLen(&rdb,NULL)) == RDB_LENERR)
                 goto eoferr;
             continue; /* Read type again. */
-        } else if (type == RDB_OPCODE_AUX) {
+        } else if (type == RDB_OPCODE_AUX) {                                      //表示Redis属性的操作码
             /* AUX: generic string-string fields. Use to add state to RDB
              * which is backward compatible. Implementations of RDB loading
              * are requierd to skip AUX fields they don't understand.
@@ -253,7 +259,7 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
             decrRefCount(auxkey);
             decrRefCount(auxval);
             continue; /* Read type again. */
-        } else if (type == RDB_OPCODE_MODULE_AUX) {
+        } else if (type == RDB_OPCODE_MODULE_AUX) {                               //表示Redis模块属性的操作码
             /* AUX: Auxiliary data for modules. */
             uint64_t moduleid, when_opcode, when;
             rdbstate.doing = RDB_CHECK_DOING_READ_MODULE_AUX;
@@ -294,6 +300,8 @@ int redis_check_rdb(char *rdbfilename, FILE *fp) {
         rdbstate.key_type = -1;
         expiretime = -1;
     }
+
+    //读取校验码，进行文件校验
     /* Verify the checksum if RDB version is >= 5 */
     if (rdbver >= 5 && server.rdb_checksum) {
         uint64_t cksum, expected = rdb.cksum;
@@ -327,6 +335,7 @@ err:
     return 1;
 }
 
+//redis_check_rdb入口函数
 /* RDB check main: called form server.c when Redis is executed with the
  * redis-check-rdb alias, on during RDB loading errors.
  *

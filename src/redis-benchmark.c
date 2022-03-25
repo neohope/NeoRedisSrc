@@ -619,6 +619,8 @@ static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     return;
                 }
             } else {
+                //数据写完后，取消写事件的监听
+                //注册读事件的监听readHandler
                 aeDeleteFileEvent(el,c->context->fd,AE_WRITABLE);
                 aeCreateFileEvent(el,c->context->fd,AE_READABLE,readHandler,c);
                 return;
@@ -816,6 +818,8 @@ static client createClient(char *cmd, size_t len, client from, int thread_id) {
         benchmarkThread *thread = config.threads[thread_id];
         el = thread->el;
     }
+
+    //只要不是idle模式，对于AE_WRITABLE，注册writeHandler
     if (config.idlemode == 0)
         aeCreateFileEvent(el,c->context->fd,AE_WRITABLE,writeHandler,c);
     listAddNodeTail(config.clients,c);
@@ -956,6 +960,7 @@ static void startBenchmarkThreads() {
         pthread_join(config.threads[i]->thread, NULL);
 }
 
+//进行一项测试
 static void benchmark(char *title, char *cmd, int len) {
     client c;
 
@@ -978,15 +983,19 @@ static void benchmark(char *title, char *cmd, int len) {
     if (config.num_threads) initBenchmarkThreads();
 
     int thread_id = config.num_threads > 0 ? 0 : -1;
+    //创建并发测试所需的客户端
     c = createClient(cmd,len,NULL,thread_id);
     createMissingClients(c);
 
     config.start = mstime();
+    //开启消息循环
     if (!config.num_threads) aeMain(config.el);
     else startBenchmarkThreads();
     config.totlatency = mstime()-config.start;
 
+    //打印报告
     showLatencyReport();
+    //释放客户端
     freeAllClients();
     if (config.threads) freeBenchmarkThreads();
     if (config.current_sec_latency_histogram) hdr_close(config.current_sec_latency_histogram);
@@ -1653,6 +1662,7 @@ int test_is_selected(char *name) {
     return strstr(config.tests,buf) != NULL;
 }
 
+//redis-benchmark入口函数
 int main(int argc, const char **argv) {
     int i;
     char *data, *cmd, *tag;
@@ -1669,6 +1679,7 @@ int main(int argc, const char **argv) {
     config.numclients = 50;
     config.requests = 100000;
     config.liveclients = 0;
+    //消息循环，用于处理客户端的读写事件
     config.el = aeCreateEventLoop(1024*10);
     aeCreateTimeEvent(config.el,1,showThroughput,NULL,NULL);
     config.keepalive = 1;
@@ -1699,6 +1710,7 @@ int main(int argc, const char **argv) {
     config.slots_last_update = 0;
     config.enable_tracking = 0;
 
+    //参数解析
     i = parseOptions(argc,argv);
     argc -= i;
     argv += i;
@@ -1793,6 +1805,7 @@ int main(int argc, const char **argv) {
             title = sdscatlen(title, (char*)argv[i], strlen(argv[i]));
         }
 
+        //测试用户输入的命令
         do {
             len = redisFormatCommandArgv(&cmd,argc,argv,NULL);
             // adjust the datasize to the parsed command
@@ -1805,6 +1818,7 @@ int main(int argc, const char **argv) {
         return 0;
     }
 
+    //进行默认测试
     /* Run default benchmark suite. */
     data = zmalloc(config.datasize+1);
     do {

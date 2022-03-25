@@ -73,6 +73,7 @@ int readArgc(FILE *fp, long *target) {
     return readLong(fp,'*',target);
 }
 
+//检测aof文件
 off_t process(FILE *fp) {
     long argc;
     off_t pos = 0;
@@ -81,8 +82,10 @@ off_t process(FILE *fp) {
 
     while(1) {
         if (!multi) pos = ftello(fp);
+        //获取命令参数个数
         if (!readArgc(fp, &argc)) break;
 
+        //依次读取参数
         for (i = 0; i < argc; i++) {
             if (!readString(fp,&str)) break;
             if (i == 0) {
@@ -117,6 +120,7 @@ off_t process(FILE *fp) {
     return pos;
 }
 
+//redis-check-aof入口函数
 int redis_check_aof_main(int argc, char **argv) {
     char *filename;
     int fix = 0;
@@ -144,6 +148,7 @@ int redis_check_aof_main(int argc, char **argv) {
         exit(1);
     }
 
+    //获取文件大小
     struct redis_stat sb;
     if (redis_fstat(fileno(fp),&sb) == -1) {
         printf("Cannot stat file: %s\n", filename);
@@ -166,6 +171,8 @@ int redis_check_aof_main(int argc, char **argv) {
         if (has_preamble) {
             printf("The AOF appears to start with an RDB preamble.\n"
                    "Checking the RDB preamble to start:\n");
+            
+            //开启rdb前缀时，先校验rdb格式
             if (redis_check_rdb_main(argc,argv,fp) == C_ERR) {
                 printf("RDB preamble of AOF file is not sane, aborting.\n");
                 exit(1);
@@ -175,6 +182,7 @@ int redis_check_aof_main(int argc, char **argv) {
         }
     }
 
+    //检测aof文件
     off_t pos = process(fp);
     off_t diff = size-pos;
     printf("AOF analyzed: size=%lld, ok_up_to=%lld, ok_up_to_line=%lld, diff=%lld\n",
@@ -189,6 +197,8 @@ int redis_check_aof_main(int argc, char **argv) {
                     printf("Aborting...\n");
                     exit(1);
             }
+
+            //修复十分粗暴，直接进行了文件截断，记得备份
             if (ftruncate(fileno(fp), pos) == -1) {
                 printf("Failed to truncate AOF\n");
                 exit(1);
