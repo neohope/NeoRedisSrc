@@ -69,11 +69,14 @@ void flagTransaction(client *c) {
         c->flags |= CLIENT_DIRTY_EXEC;
 }
 
+//multi命令
 void multiCommand(client *c) {
     if (c->flags & CLIENT_MULTI) {
         addReplyError(c,"MULTI calls can not be nested");
         return;
     }
+
+    //在客户端的标记中设置CLIENT_MULTI
     c->flags |= CLIENT_MULTI;
 
     addReply(c,shared.ok);

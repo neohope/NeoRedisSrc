@@ -4133,10 +4133,16 @@ int processCommand(client *c) {
         //查找能处理命令的节点，判断是否需要重定向
         clusterNode *n = getNodeByQuery(c,c->cmd,c->argv,c->argc,
                                         &hashslot,&error_code);
+
+        //当集群不可用、key找不到对应的slot、key不在本实例中
+        //操作的多个key不在同一个slot、key正在迁移中等无法操作的情况时
+        //取消事务
         if (n == NULL || n != server.cluster->myself) {
             if (c->cmd->proc == execCommand) {
+                //取消事务，事务最终会失败
                 discardTransaction(c);
             } else {
+                //打CLIENT_DIRTY_EXEC标记，命令最终会失败
                 flagTransaction(c);
             }
 
@@ -4330,6 +4336,7 @@ int processCommand(client *c) {
     {
         //如果客户端有CLIENT_MULTI标记，并且当前不是exec、discard、multi和watch命令
         //Redis事务，将命令入队保存，等待后续一起处理
+        //命令缓存在 client 结构体的 mstate 成员变量中
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {

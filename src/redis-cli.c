@@ -1293,6 +1293,7 @@ static int cliReadReply(int output_raw_strings) {
 
     config.last_cmd_type = reply->type;
 
+    //处理cluster重定向
     /* Check if we need to connect to a different node and reissue the
      * request. */
     if (config.cluster_mode && reply->type == REDIS_REPLY_ERROR &&
