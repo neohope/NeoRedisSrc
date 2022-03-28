@@ -1901,6 +1901,7 @@ int xreadGetKeys(struct redisCommand *cmd, robj **argv, int argc, getKeysResult 
  * a fast way a key that belongs to a specified hash slot. This is useful
  * while rehashing the cluster and in other conditions when we need to
  * understand if we have keys for a given hash slot. */
+//增加或删除key
 void slotToKeyUpdateKey(sds key, int add) {
     size_t keylen = sdslen(key);
     unsigned int hashslot = keyHashSlot(key,keylen);
@@ -1920,14 +1921,17 @@ void slotToKeyUpdateKey(sds key, int add) {
     if (indexed != buf) zfree(indexed);
 }
 
+//增加key
 void slotToKeyAdd(sds key) {
     slotToKeyUpdateKey(key,1);
 }
 
+//删除key
 void slotToKeyDel(sds key) {
     slotToKeyUpdateKey(key,0);
 }
 
+//清理rax
 /* Release the radix tree mapping Redis Cluster keys to slots. If 'async'
  * is true, we release it asynchronously. */
 void freeSlotsToKeysMap(rax *rt, int async) {
@@ -1938,6 +1942,7 @@ void freeSlotsToKeysMap(rax *rt, int async) {
     }
 }
 
+//清除数据
 /* Empty the slots-keys map of Redis CLuster by creating a new empty one and
  * freeing the old one. */
 void slotToKeyFlush(int async) {
@@ -1949,6 +1954,7 @@ void slotToKeyFlush(int async) {
     freeSlotsToKeysMap(old, async);
 }
 
+//获取指定slot下的 keys
 /* Populate the specified array of objects with keys in the specified slot.
  * New objects are returned to represent keys, it's up to the caller to
  * decrement the reference count to release the keys names. */
@@ -1969,6 +1975,7 @@ unsigned int getKeysInSlot(unsigned int hashslot, robj **keys, unsigned int coun
     return j;
 }
 
+//删除指定slot下的 keys
 /* Remove all the keys in the specified hash slot.
  * The number of removed items is returned. */
 unsigned int delKeysInSlot(unsigned int hashslot) {
@@ -1992,6 +1999,7 @@ unsigned int delKeysInSlot(unsigned int hashslot) {
     return j;
 }
 
+//获取slot中有多少key
 unsigned int countKeysInSlot(unsigned int hashslot) {
     return server.cluster->slots_keys_count[hashslot];
 }

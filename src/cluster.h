@@ -115,12 +115,13 @@ typedef struct clusterNodeFailReport {
     mstime_t time;             /* Time of the last report from this node. */
 } clusterNodeFailReport;
 
+//cluster下每个node包括哪些slots
 typedef struct clusterNode {
     mstime_t ctime; /* Node object creation time. */
     char name[CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
     int flags;      /* CLUSTER_NODE_... */
     uint64_t configEpoch; /* Last configEpoch observed for this node */
-    unsigned char slots[CLUSTER_SLOTS/8]; /* slots handled by this node */
+    unsigned char slots[CLUSTER_SLOTS/8]; /* slots handled by this node */             //每一位标识一个slot，该位位1则此节点负责该slot处理
     sds slots_info; /* Slots info represented by string. */
     int numslots;   /* Number of slots handled by this node */
     int numslaves;  /* Number of slave nodes, if this is a master */
@@ -153,11 +154,11 @@ typedef struct clusterState {
     int size;             /* Num of master nodes with at least one slot */
     dict *nodes;          /* Hash table of name -> clusterNode structures */
     dict *nodes_black_list; /* Nodes we don't re-add for a few seconds. */
-    clusterNode *migrating_slots_to[CLUSTER_SLOTS];
-    clusterNode *importing_slots_from[CLUSTER_SLOTS];
-    clusterNode *slots[CLUSTER_SLOTS];
+    clusterNode *migrating_slots_to[CLUSTER_SLOTS];                                    //表示当前节点负责的slot正在迁往哪个节点
+    clusterNode *importing_slots_from[CLUSTER_SLOTS];                                  //表示当前节点正在从哪个节点迁入某个slot
+    clusterNode *slots[CLUSTER_SLOTS];                                                 //16384个slot分别是由哪个节点负责的
     uint64_t slots_keys_count[CLUSTER_SLOTS];
-    rax *slots_to_keys;
+    rax *slots_to_keys;                                                                //记录slot和key的对应关系
     /* The following fields are used to take the slave state on elections. */
     mstime_t failover_auth_time; /* Time of previous or next election. */
     int failover_auth_count;    /* Number of votes received so far. */
