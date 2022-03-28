@@ -15,15 +15,15 @@
 /* Representation of a latency sample: the sampling time and the latency
  * observed in milliseconds. */
 struct latencySample {
-    int32_t time; /* We don't use time_t to force 4 bytes usage everywhere. */
-    uint32_t latency; /* Latency in milliseconds. */
+    int32_t time; /* We don't use time_t to force 4 bytes usage everywhere. */            //事件的采样时间
+    uint32_t latency; /* Latency in milliseconds. */                                      //事件的执行时长（以毫秒为单位）
 };
 
 /* The latency time series for a given event. */
 struct latencyTimeSeries {
-    int idx; /* Index of the next sample to store. */
-    uint32_t max; /* Max latency observed for this event. */
-    struct latencySample samples[LATENCY_TS_LEN]; /* Latest history. */
+    int idx; /* Index of the next sample to store. */                                     //采样事件数组的写入位置
+    uint32_t max; /* Max latency observed for this event. */                              //当前事件的最大延迟
+    struct latencySample samples[LATENCY_TS_LEN]; /* Latest history. */                   //采样事件数组，记录LATENCY_TS_LEN个采样结果，LATENCY_TS_LEN默认为160};
 };
 
 /* Latency statistics structure. */

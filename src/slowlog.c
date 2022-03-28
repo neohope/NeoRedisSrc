@@ -21,21 +21,27 @@
  * Incrementing the ref count of all the objects retained is up to
  * this function. */
 slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long duration) {
+    //分配日志项空间
     slowlogEntry *se = zmalloc(sizeof(*se));
+    //待记录的参数个数，默认为当前命令的参数个数
     int j, slargc = argc;
 
+    //如果当前命令参数个数超出阈值，则只记录阈值个数的参数
     if (slargc > SLOWLOG_ENTRY_MAX_ARGC) slargc = SLOWLOG_ENTRY_MAX_ARGC;
     se->argc = slargc;
     se->argv = zmalloc(sizeof(robj*)*slargc);
     for (j = 0; j < slargc; j++) {
+        //逐一记录命令及参数
         /* Logging too many arguments is a useless memory waste, so we stop
          * at SLOWLOG_ENTRY_MAX_ARGC, but use the last argument to specify
          * how many remaining arguments there were in the original command. */
         if (slargc != argc && j == slargc-1) {
+            //如果命令参数个数超出阈值，使用最后一个参数记录当前命令实际剩余的参数个数
             se->argv[j] = createObject(OBJ_STRING,
                 sdscatprintf(sdsempty(),"... (%d more arguments)",
                 argc-slargc+1));
         } else {
+            //将命令参数填充到日志项中
             /* Trim too long strings as well... */
             if (argv[j]->type == OBJ_STRING &&
                 sdsEncodedObject(argv[j]) &&
@@ -60,6 +66,7 @@ slowlogEntry *slowlogCreateEntry(client *c, robj **argv, int argc, long long dur
             }
         }
     }
+    //将命令执行时长、客户端地址等信息填充到日志项中
     se->time = time(NULL);
     se->duration = duration;
     se->id = server.slowlog_entry_id++;
@@ -92,15 +99,19 @@ void slowlogInit(void) {
     listSetFreeMethod(server.slowlog,slowlogFreeEntry);
 }
 
+//记录慢日志
 /* Push a new entry into the slow log.
  * This function will make sure to trim the slow log accordingly to the
  * configured max length. */
 void slowlogPushEntryIfNeeded(client *c, robj **argv, int argc, long long duration) {
     if (server.slowlog_log_slower_than < 0) return; /* Slowlog disabled */
+
+    //当前命令的执行时长是否大于配置项，如果是记录慢日志
     if (duration >= server.slowlog_log_slower_than)
         listAddNodeHead(server.slowlog,
                         slowlogCreateEntry(c,argv,argc,duration));
 
+    //如果日志列表超过阈值长度，就删除列表末尾的日志项
     /* Remove old entries if needed. */
     while (listLength(server.slowlog) > server.slowlog_max_len)
         listDelNode(server.slowlog,listLast(server.slowlog));

@@ -21,13 +21,13 @@
 
 /* This structure defines an entry inside the slow log list */
 typedef struct slowlogEntry {
-    robj **argv;
-    int argc;
-    long long id;       /* Unique entry identifier. */
-    long long duration; /* Time spent by the query, in microseconds. */
-    time_t time;        /* Unix time at which the query was executed. */
-    sds cname;          /* Client name. */
-    sds peerid;         /* Client network address. */
+    robj **argv;                                                            //日志项对应的命令及参数
+    int argc;                                                               //日志项对应的参数个数
+    long long id;       /* Unique entry identifier. */                      //日志项的唯一ID
+    long long duration; /* Time spent by the query, in microseconds. */     //日志项对应命令的执行时长（以微秒为单位）
+    time_t time;        /* Unix time at which the query was executed. */    //日志项对应命令的执行时间戳
+    sds cname;          /* Client name. */                                  //日志项对应命令的发送客户端名称
+    sds peerid;         /* Client network address. */                       //日志项对应命令的发送客户端网络地址
 } slowlogEntry;
 
 /* Exported API */

@@ -522,6 +522,7 @@ try_fsync:
             exit(1);
         }
         latencyEndMonitor(latency);
+        //记录慢日志
         latencyAddSampleIfNeeded("aof-fsync-always",latency);
         server.aof_fsync_offset = server.aof_current_size;
         server.aof_last_fsync = server.unixtime;

@@ -75,6 +75,7 @@ int THPGetAnonHugePagesSize(void) {
 
 /* ---------------------------- Latency API --------------------------------- */
 
+//创建latencyMonitor
 /* Latency monitor initialization. We just need to create the dictionary
  * of time series, each time series is created on demand in order to avoid
  * having a fixed list to maintain. */
@@ -82,15 +83,18 @@ void latencyMonitorInit(void) {
     server.latency_events = dictCreate(&latencyTimeSeriesDictType,NULL);
 }
 
+//进行采样
 /* Add the specified sample to the specified time series "event".
  * This function is usually called via latencyAddSampleIfNeeded(), that
  * is a macro that only adds the sample if the latency is higher than
  * server.latency_monitor_threshold. */
 void latencyAddSample(const char *event, mstime_t latency) {
+    //查找事件对应的哈希项
     struct latencyTimeSeries *ts = dictFetchValue(server.latency_events,event);
     time_t now = time(NULL);
     int prev;
 
+    //如果哈希项为空，就新建哈希项
     /* Create the time series if it does not exist. */
     if (ts == NULL) {
         ts = zmalloc(sizeof(*ts));
@@ -100,17 +104,23 @@ void latencyAddSample(const char *event, mstime_t latency) {
         dictAdd(server.latency_events,zstrdup(event),ts);
     }
 
+    //新当前记录的该类事件的最大执行时间
     if (latency > ts->max) ts->max = latency;
 
     /* If the previous sample is in the same second, we update our old sample
      * if this latency is > of the old one, or just return. */
+    //获得同类事件的前一个采样结果
     prev = (ts->idx + LATENCY_TS_LEN - 1) % LATENCY_TS_LEN;
     if (ts->samples[prev].time == now) {
+        //如果当前和前一个采样结果在同一秒中
+        //如果当前采用结果的执行时长大于前一个采样结果
+        //直接更新前一个采样结果的执行时长
         if (latency > ts->samples[prev].latency)
             ts->samples[prev].latency = latency;
         return;
     }
 
+    //否则，新插入当前的采样结果
     ts->samples[ts->idx].time = time(NULL);
     ts->samples[ts->idx].latency = latency;
 
@@ -204,25 +214,26 @@ void analyzeLatencyForEvent(char *event, struct latencyStats *ls) {
     if (ls->samples) ls->mad = sum / ls->samples;
 }
 
+//生成延迟分析报告
 /* Create a human readable report of latency events for this Redis instance. */
 sds createLatencyReport(void) {
     sds report = sdsempty();
     int advise_better_vm = 0;       /* Better virtual machines. */
-    int advise_slowlog_enabled = 0; /* Enable slowlog. */
-    int advise_slowlog_tuning = 0;  /* Reconfigure slowlog. */
-    int advise_slowlog_inspect = 0; /* Check your slowlog. */
-    int advise_disk_contention = 0; /* Try to lower disk contention. */
+    int advise_slowlog_enabled = 0; /* Enable slowlog. */                       //建议启用slowlog
+    int advise_slowlog_tuning = 0;  /* Reconfigure slowlog. */                  //建议重新配置slowlog阈值
+    int advise_slowlog_inspect = 0; /* Check your slowlog. */                   //建议检查slowlog结果
+    int advise_disk_contention = 0; /* Try to lower disk contention. */         //建议减少磁盘竞争
     int advise_scheduler = 0;       /* Intrinsic latency. */
     int advise_data_writeback = 0;  /* data=writeback. */
-    int advise_no_appendfsync = 0;  /* don't fsync during rewrites. */
-    int advise_local_disk = 0;      /* Avoid remote disks. */
-    int advise_ssd = 0;             /* Use an SSD drive. */
-    int advise_write_load_info = 0; /* Print info about AOF and write load. */
+    int advise_no_appendfsync = 0;  /* don't fsync during rewrites. */          //重写时不要fsync
+    int advise_local_disk = 0;      /* Avoid remote disks. */                   //建议避免使用远程磁盘
+    int advise_ssd = 0;             /* Use an SSD drive. */                     //建议使用SSD
+    int advise_write_load_info = 0; /* Print info about AOF and write load. */  //建议输出AOF信息
     int advise_hz = 0;              /* Use higher HZ. */
-    int advise_large_objects = 0;   /* Deletion of large objects. */
+    int advise_large_objects = 0;   /* Deletion of large objects. */            //建议避免使用bigkey
     int advise_mass_eviction = 0;   /* Avoid mass eviction of keys. */
     int advise_relax_fsync_policy = 0; /* appendfsync always is slow. */
-    int advise_disable_thp = 0;     /* AnonHugePages detected. */
+    int advise_disable_thp = 0;     /* AnonHugePages detected. */               //建议避免使用大page
     int advices = 0;
 
     /* Return ASAP if the latency engine is disabled and it looks like it
@@ -251,6 +262,7 @@ sds createLatencyReport(void) {
         if (eventnum == 1) {
             report = sdscat(report,"Dave, I have observed latency spikes in this Redis instance. You don't mind talking about it, do you Dave?\n\n");
         }
+        //计算获得采样的延迟事件执行时长的均值、最大、最小值等统计结果
         analyzeLatencyForEvent(event,&ls);
 
         report = sdscatprintf(report,
@@ -549,6 +561,7 @@ sds latencyCommandGenSparkeline(char *event, struct latencyTimeSeries *ts) {
     return graph;
 }
 
+//处理延迟命令
 /* LATENCY command implementations.
  *
  * LATENCY HISTORY: return time-latency samples for the specified event.
@@ -587,6 +600,7 @@ void latencyCommand(client *c) {
         latencyCommandReplyWithLatestEvents(c);
     } else if (!strcasecmp(c->argv[1]->ptr,"doctor") && c->argc == 2) {
         /* LATENCY DOCTOR */
+        //生成延迟分析报告
         sds report = createLatencyReport();
 
         addReplyVerbatim(c,report,sdslen(report),"txt");

@@ -3707,6 +3707,7 @@ void slowlogPushCurrentCommand(client *c, struct redisCommand *cmd, ustime_t dur
      * arguments. */
     robj **argv = c->original_argv ? c->original_argv : c->argv;
     int argc = c->original_argv ? c->original_argc : c->argc;
+    //记录慢日志
     slowlogPushEntryIfNeeded(c,argv,argc,duration);
 }
 
@@ -3821,6 +3822,7 @@ void call(client *c, int flags) {
      * unless instructed by the caller not to log. (happens when processing
      * a MULTI-EXEC from inside an AOF). */
     if (flags & CMD_CALL_SLOWLOG) {
+        //根据命令数据结构中flags的CMD_FAST标记，决定当前是fast-command事件还是command事件
         char *latency_event = (real_cmd->flags & CMD_FAST) ?
                                "fast-command" : "command";
         latencyAddSampleIfNeeded(latency_event,duration/1000);

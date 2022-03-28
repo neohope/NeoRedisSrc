@@ -1266,7 +1266,7 @@ struct redisServer {
     long long stat_sync_full;       /* Number of full resyncs with slaves. */
     long long stat_sync_partial_ok; /* Number of accepted PSYNC requests. */
     long long stat_sync_partial_err;/* Number of unaccepted PSYNC requests. */
-    list *slowlog;                  /* SLOWLOG list of commands */
+    list *slowlog;                  /* SLOWLOG list of commands */                               //慢日志
     long long slowlog_entry_id;     /* SLOWLOG current entry ID */
     long long slowlog_log_slower_than; /* SLOWLOG time limit (to get logged) */
     unsigned long slowlog_max_len;     /* SLOWLOG max number of items logged */
@@ -1413,16 +1413,16 @@ struct redisServer {
     /* Replication (master) */
     char replid[CONFIG_RUN_ID_SIZE+1];  /* My current replication ID. */
     char replid2[CONFIG_RUN_ID_SIZE+1]; /* replid inherited from master*/
-    long long master_repl_offset;   /* My current replication offset */
+    long long master_repl_offset;   /* My current replication offset */                  //全局范围内的读取偏移量
     long long second_replid_offset; /* Accept offsets up to this for replid2. */
     int slaveseldb;                 /* Last SELECTed DB in replication output */
     int repl_ping_slave_period;     /* Master pings the slave every N seconds */
     char *repl_backlog;             /* Replication backlog for partial syncs */          //基于字符数组的循环缓冲区
     long long repl_backlog_size;    /* Backlog circular buffer size */                   //循环缓冲区总长度
     long long repl_backlog_histlen; /* Backlog actual data length */                     //循环缓冲区中当前累积的数据的长度
-    long long repl_backlog_idx;     /* Backlog circular buffer current offset,           //循环缓冲区的写指针位置
-                                       that is the next byte will'll write to.*          //循环缓冲区最早保存的数据的首字节在全局范围内的偏移
-    long long repl_backlog_off;     /* Replication "master offset" of first
+    long long repl_backlog_idx;     /* Backlog circular buffer current offset,           //循环缓冲区当前写指针的位置
+                                       that is the next byte will'll write to.*/
+    long long repl_backlog_off;     /* Replication "master offset" of first              //循环缓冲区中最久的数据首字节在全局范围内的偏移
                                        byte in the replication backlog buffer.*/
     time_t repl_backlog_time_limit; /* Time without slaves after the backlog
                                        gets released. */
@@ -1578,8 +1578,8 @@ struct redisServer {
     int lazyfree_lazy_user_del;          //DEL命令与UNLINK命令运作方式一致【默认：即使开启了 lazy-free，但如果执行的是 DEL 命令，则还是会同步释放 key 内存，只有使用 UNLINK 命令才「可能」异步释放内存】
     int lazyfree_lazy_user_flush;        //主从全量同步，从库清空数据库时异步释放内存，在加载RDB文件时，惰性删除原有旧数据【开启必定后台，前三个不一定】
     /* Latency monitor */
-    long long latency_monitor_threshold;
-    dict *latency_events;
+    long long latency_monitor_threshold; //延迟阈值
+    dict *latency_events;                //各类延迟事件
     /* ACLs */
     char *acl_filename;           /* ACL Users file. NULL if not configured. */
     unsigned long acllog_max_len; /* Maximum length of the ACL LOG list. */
