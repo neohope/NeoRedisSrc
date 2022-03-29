@@ -40,6 +40,7 @@
 #include <ctype.h>
 #include <string.h>
 
+//功能实现
 /* HELLO.SIMPLE is among the simplest commands you can implement.
  * It just returns the currently selected DB id, a functionality which is
  * missing in Redis. The command uses two important API calls: one to
@@ -540,9 +541,12 @@ int HelloLeftPad_RedisCommand(RedisModuleCtx *ctx, RedisModuleString **argv, int
     return REDISMODULE_OK;
 }
 
+//redis启动时，会在moduleLoad中调用RedisModule_OnLoad函数
+//helloworld模块，会在这里做一些初始化工作
 /* This function must be present on each Redis module. It is used in order to
  * register the commands into the Redis server. */
 int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
+    //调用RedisModule_Init进行初始化
     if (RedisModule_Init(ctx,"helloworld",1,REDISMODULE_APIVER_1)
         == REDISMODULE_ERR) return REDISMODULE_ERR;
 
@@ -552,6 +556,7 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
         printf("Module loaded with ARGV[%d] = %s\n", j, s);
     }
 
+    //注册模块命令
     if (RedisModule_CreateCommand(ctx,"hello.simple",
         HelloSimple_RedisCommand,"readonly",0,0,0) == REDISMODULE_ERR)
         return REDISMODULE_ERR;

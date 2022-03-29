@@ -3775,6 +3775,7 @@ void call(client *c, int flags) {
     //开始计时
     elapsedStart(&call_timer);
     //调用对应函数
+    //如果是模块命令，执行RedisModuleCommandDispatcher
     c->cmd->proc(c);
     //计算耗时
     const long duration = elapsedUs(call_timer);
@@ -4028,7 +4029,7 @@ int processCommand(client *c) {
         serverAssert(!server.in_eval);
     }
 
-    //将Redis命令替换成module中想要替换的命令
+    //模块filter
     moduleCallCommandFilters(c);
 
     //退出命令
@@ -4342,7 +4343,8 @@ int processCommand(client *c) {
         queueMultiCommand(c);
         addReply(c,shared.queued);
     } else {
-        //执行命令
+        //非CLIENT_MULTI
+        //执行命令，包括模块命令处理函数RedisModuleCommandDispatcher
         call(c,CMD_CALL_FULL);
         c->woff = server.master_repl_offset;
         if (listLength(server.ready_keys))
@@ -6346,6 +6348,7 @@ int main(int argc, char **argv) {
     //ACL控制
     ACLInit(); /* The ACL subsystem must be initialized ASAP because the
                   basic networking code and client creation depends on it. */
+    //模块初始化
     moduleInitModulesSystem();
     //tsl初始化
     tlsInit();
@@ -6489,6 +6492,7 @@ int main(int argc, char **argv) {
     #endif /* __arm64__ */
     #endif /* __linux__ */
         moduleInitModulesSystemLast();
+        //加载模块
         moduleLoadFromQueue();
         //ACL配置
         ACLLoadUsersAtStartup();

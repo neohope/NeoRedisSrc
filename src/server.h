@@ -1629,8 +1629,8 @@ typedef struct {
 typedef void redisCommandProc(client *c);
 typedef int redisGetKeysProc(struct redisCommand *cmd, robj **argv, int argc, getKeysResult *result);
 struct redisCommand {
-    char *name;
-    redisCommandProc *proc;
+    char *name;                              //命令名称
+    redisCommandProc *proc;                  //命令对应的实现函数
     int arity;
     char *sflags;   /* Flags as string representation, one char per flag. */
     uint64_t flags; /* The actual flags, obtained from the 'sflags' field. */
@@ -1738,7 +1738,7 @@ extern dictType sdsReplyDictType;
  *----------------------------------------------------------------------------*/
 
 /* Modules */
-void moduleInitModulesSystem(void);
+void (void);
 void moduleInitModulesSystemLast(void);
 int moduleLoad(const char *path, void **argv, int argc);
 void moduleLoadFromQueue(void);

@@ -854,8 +854,11 @@ REDISMODULE_API int (*RedisModule_DefragCursorGet)(RedisModuleDefragCtx *ctx, un
 /* This is included inline inside each Redis module. */
 static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver) REDISMODULE_ATTR_UNUSED;
 static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int apiver) {
+    //设置RedisModule_GetApi函数，让它等于RedisModuleCtx结构体中的函数指针getapifuncptr
+    //查看REDISMODULE_CTX_INIT，可以知道((void**)ctx)[0]指向的就是RM_GetApi
     void *getapifuncptr = ((void**)ctx)[0];
     RedisModule_GetApi = (int (*)(const char *, void *)) (unsigned long)getapifuncptr;
+    //提供redis可以使用的API
     REDISMODULE_GET_API(Alloc);
     REDISMODULE_GET_API(Calloc);
     REDISMODULE_GET_API(Free);
@@ -1122,7 +1125,9 @@ static int RedisModule_Init(RedisModuleCtx *ctx, const char *name, int ver, int 
     REDISMODULE_GET_API(DefragCursorGet);
 #endif
 
+    //查看模块名称是否可用
     if (RedisModule_IsModuleNameBusy && RedisModule_IsModuleNameBusy(name)) return REDISMODULE_ERR;
+    //给新增模块分配一个 RedisModule 结构体，初始化这个结构体中的成员变量，用来记录一个模块的相关属性
     RedisModule_SetModuleAttribs(ctx,name,ver,apiver);
     return REDISMODULE_OK;
 }

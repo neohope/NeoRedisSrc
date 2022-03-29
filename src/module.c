@@ -657,6 +657,7 @@ void moduleFreeContext(RedisModuleCtx *ctx) {
     if (ctx->flags & REDISMODULE_CTX_THREAD_SAFE) freeClient(ctx->client);
 }
 
+//执行具体的redis命令
 /* This Redis command binds the normal Redis command invocation with commands
  * exported by modules. */
 void RedisModuleCommandDispatcher(client *c) {
@@ -666,6 +667,8 @@ void RedisModuleCommandDispatcher(client *c) {
     ctx.flags |= REDISMODULE_CTX_MODULE_COMMAND_CALL;
     ctx.module = cp->module;
     ctx.client = c;
+
+    //执行具体的命令
     cp->func(&ctx,(void**)c->argv,c->argc);
     moduleFreeContext(&ctx);
 
@@ -792,6 +795,7 @@ int64_t commandFlagsFromString(char *s) {
     return flags;
 }
 
+//注册模块命令
 /* Register a new command in the Redis server, that will be handled by
  * calling the function pointer 'func' using the RedisModule calling
  * convention. The function returns REDISMODULE_ERR if the specified command
@@ -859,8 +863,8 @@ int RM_CreateCommand(RedisModuleCtx *ctx, const char *name, RedisModuleCmdFunc c
         return REDISMODULE_ERR;
 
     struct redisCommand *rediscmd;
-    RedisModuleCommandProxy *cp;
-    sds cmdname = sdsnew(name);
+    RedisModuleCommandProxy *cp;                                              //创建RedisModuleCommandProxy结构体变量
+    sds cmdname = sdsnew(name);                                               //新增命令的名称
 
     /* Check if the command name is busy. */
     if (lookupCommand(cmdname) != NULL) {
@@ -876,11 +880,11 @@ int RM_CreateCommand(RedisModuleCtx *ctx, const char *name, RedisModuleCmdFunc c
      * Note that we use the Redis command table 'getkeys_proc' in order to
      * pass a reference to the command proxy structure. */
     cp = zmalloc(sizeof(*cp));
-    cp->module = ctx->module;
-    cp->func = cmdfunc;
+    cp->module = ctx->module;                                                   //记录命令对应的模块
+    cp->func = cmdfunc;                                                         //命令对应的实现函数
     cp->rediscmd = zmalloc(sizeof(*rediscmd));
-    cp->rediscmd->name = cmdname;
-    cp->rediscmd->proc = RedisModuleCommandDispatcher;
+    cp->rediscmd->name = cmdname;                                               //命令名称
+    cp->rediscmd->proc = RedisModuleCommandDispatcher;                          //命令处理函数
     cp->rediscmd->arity = -1;
     cp->rediscmd->flags = flags | CMD_MODULE;
     cp->rediscmd->getkeys_proc = (redisGetKeysProc*)(unsigned long)cp;
@@ -891,6 +895,8 @@ int RM_CreateCommand(RedisModuleCtx *ctx, const char *name, RedisModuleCmdFunc c
     cp->rediscmd->calls = 0;
     cp->rediscmd->rejected_calls = 0;
     cp->rediscmd->failed_calls = 0;
+    
+    //把rediscmd添加到Redis的命令表中
     dictAdd(server.commands,sdsdup(cmdname),cp->rediscmd);
     dictAdd(server.orig_commands,sdsdup(cmdname),cp->rediscmd);
     cp->rediscmd->id = ACLGetCommandID(cmdname); /* ID used for ACL. */
@@ -901,6 +907,7 @@ int RM_CreateCommand(RedisModuleCtx *ctx, const char *name, RedisModuleCmdFunc c
  * ## Module information and time measurement
  * -------------------------------------------------------------------------- */
 
+//给新增模块分配一个 RedisModule 结构体，初始化这个结构体中的成员变量，用来记录一个模块的相关属性
 void RM_SetModuleAttribs(RedisModuleCtx *ctx, const char *name, int ver, int apiver) {
     /* Called by RM_Init() to setup the `ctx->module` structure.
      *
@@ -910,9 +917,9 @@ void RM_SetModuleAttribs(RedisModuleCtx *ctx, const char *name, int ver, int api
 
     if (ctx->module != NULL) return;
     module = zmalloc(sizeof(*module));
-    module->name = sdsnew((char*)name);
-    module->ver = ver;
-    module->apiver = apiver;
+    module->name = sdsnew((char*)name);      //设置模块名称
+    module->ver = ver;                       //设置模块版本
+    module->apiver = apiver;                 //设置模块API版本
     module->types = listCreate();
     module->usedby = listCreate();
     module->using = listCreate();
@@ -922,7 +929,7 @@ void RM_SetModuleAttribs(RedisModuleCtx *ctx, const char *name, int ver, int api
     module->options = 0;
     module->info_cb = 0;
     module->defrag_cb = 0;
-    ctx->module = module;
+    ctx->module = module;                    //在记录模块运行状态的RedisModuleCtx变量中保存模块指针
 }
 
 /* Return non-zero if the module name is busy.
@@ -4101,6 +4108,7 @@ RedisModuleCallReply *RM_Call(RedisModuleCtx *ctx, const char *cmdname, const ch
         goto cleanup;
     }
 
+    //模块filter
     /* Call command filters */
     moduleCallCommandFilters(c);
 
@@ -7426,6 +7434,7 @@ int RM_UnregisterCommandFilter(RedisModuleCtx *ctx, RedisModuleCommandFilter *fi
     return REDISMODULE_OK;
 }
 
+//模块filter
 void moduleCallCommandFilters(client *c) {
     if (listLength(moduleCommandFilters) == 0) return;
 
@@ -8394,6 +8403,7 @@ dictType moduleAPIDictType = {
     NULL                       /* allow to expand */
 };
 
+//把“RedisModule_”开头的 API 函数，转换成“RM_”开头的 API 函数，并通过 dictAdd 函数，将 API 函数添加到全局的 moduleapi 哈希表中
 int moduleRegisterApi(const char *funcname, void *funcptr) {
     return dictAdd(server.moduleapi, (char*)funcname, funcptr);
 }
@@ -8414,9 +8424,12 @@ void moduleInitModulesSystemLast(void) {
     moduleFreeContextReusedClient->user = NULL; /* root user. */
 }
 
+//模块初始化
 void moduleInitModulesSystem(void) {
     moduleUnblockedClients = listCreate();
+    //待加载模块的列表
     server.loadmodule_queue = listCreate();
+    //扩展模块的全局哈希表
     modules = dictCreate(&modulesDictType,NULL);
 
     /* Set up the keyspace notification subscriber list and static client */
@@ -8428,6 +8441,7 @@ void moduleInitModulesSystem(void) {
     /* Reusable client for RM_Call() is created on first use */
     server.module_client = NULL;
 
+    //注册模块核心API
     moduleRegisterCoreAPI();
     if (pipe(server.module_blocked_pipe) == -1) {
         serverLog(LL_WARNING,
@@ -8456,6 +8470,7 @@ void moduleInitModulesSystem(void) {
     pthread_mutex_lock(&moduleGIL);
 }
 
+//加载模块
 /* Load all the modules in the server.loadmodule_queue list, which is
  * populated by `loadmodule` directives in the configuration file.
  * We can't load modules directly when processing the configuration file
@@ -8471,6 +8486,7 @@ void moduleLoadFromQueue(void) {
 
     listRewind(server.loadmodule_queue,&li);
     while((ln = listNext(&li))) {
+        //加载扩展模块
         struct moduleLoadQueueEntry *loadmod = ln->value;
         if (moduleLoad(loadmod->path,(void **)loadmod->argv,loadmod->argc)
             == C_ERR)
@@ -8514,6 +8530,7 @@ void moduleUnregisterCommands(struct RedisModule *module) {
     dictReleaseIterator(di);
 }
 
+//加载扩展模块，并进行初始化
 /* Load a module and initialize it. On success C_OK is returned, otherwise
  * C_ERR is returned. */
 int moduleLoad(const char *path, void **module_argv, int module_argc) {
@@ -8532,11 +8549,14 @@ int moduleLoad(const char *path, void **module_argv, int module_argc) {
         }
     }
 
+    //加载动态库
     handle = dlopen(path,RTLD_NOW|RTLD_LOCAL);
     if (handle == NULL) {
         serverLog(LL_WARNING, "Module %s failed to load: %s", path, dlerror());
         return C_ERR;
     }
+
+    //在模块文件中查找RedisModule_OnLoad函数
     onload = (int (*)(void *, void **, int))(unsigned long) dlsym(handle,"RedisModule_OnLoad");
     if (onload == NULL) {
         dlclose(handle);
@@ -8545,6 +8565,8 @@ int moduleLoad(const char *path, void **module_argv, int module_argc) {
             "symbol. Module not loaded.",path);
         return C_ERR;
     }
+
+    //调用RedisModule_OnLoad函数进行初始化
     if (onload((void*)&ctx,module_argv,module_argc) == REDISMODULE_ERR) {
         if (ctx.module) {
             moduleUnregisterCommands(ctx.module);
@@ -8558,6 +8580,7 @@ int moduleLoad(const char *path, void **module_argv, int module_argc) {
         return C_ERR;
     }
 
+    //把加载的模块添加到全局哈希表modules
     /* Redis module loaded! Register it. */
     dictAdd(modules,ctx.module->name,ctx.module);
     ctx.module->blocked_clients = 0;
@@ -9214,11 +9237,16 @@ long moduleDefragGlobals(void) {
     return defragged;
 }
 
+//注册模块核心API
 /* Register all the APIs we export. Keep this function at the end of the
  * file so that's easy to seek it to add new entries. */
 void moduleRegisterCoreAPI(void) {
+    //模块向外暴露的API
     server.moduleapi = dictCreate(&moduleAPIDictType,NULL);
+    //模块之间共享的API
     server.sharedapi = dictCreate(&moduleAPIDictType,NULL);
+    //当我们在开发新的扩展模块时，就会调用框架的CreateCommand API，来创建新增的命令
+    //以及调用ReplyWithLongLong API来给客户端返回结果
     REGISTER_API(Alloc);
     REGISTER_API(Calloc);
     REGISTER_API(Realloc);
