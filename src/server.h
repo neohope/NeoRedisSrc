@@ -1738,7 +1738,7 @@ extern dictType sdsReplyDictType;
  *----------------------------------------------------------------------------*/
 
 /* Modules */
-void (void);
+void moduleInitModulesSystem(void);
 void moduleInitModulesSystemLast(void);
 int moduleLoad(const char *path, void **argv, int argc);
 void moduleLoadFromQueue(void);

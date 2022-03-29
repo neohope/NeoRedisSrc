@@ -268,6 +268,7 @@ proc dump_server_log {srv} {
     puts "===== End of server log (pid $pid) =====\n"
 }
 
+# 开启一个redis实例
 proc start_server {options {code undefined}} {
     # setup defaults
     set baseconfig "default.conf"

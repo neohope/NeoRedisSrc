@@ -41,6 +41,7 @@ array set ::redis::callback {}
 array set ::redis::state {} ;# State in non-blocking reply reading
 array set ::redis::statestack {} ;# Stack of states, for nested mbulks
 
+# redis函数
 proc redis {{server 127.0.0.1} {port 6379} {defer 0} {tls 0} {tlsoptions {}} {readraw 0}} {
     if {$tls} {
         package require tls
@@ -63,9 +64,14 @@ proc redis {{server 127.0.0.1} {port 6379} {defer 0} {tls 0} {tlsoptions {}} {re
     set ::redis::reconnect($id) 0
     set ::redis::tls($id) $tls
     ::redis::redis_reset_state $id
+
+    # redisHandle与__dispatch__进行关联
     interp alias {} ::redis::redisHandle$id {} ::redis::__dispatch__ $id
 }
 
+# 发送命令给服务端3
+# $id set x foobar
+# __dispatch__与__dispatch__raw__进行关联
 # This is a wrapper to the actual dispatching procedure that handles
 # reconnection if needed.
 proc ::redis::__dispatch__ {id method args} {
@@ -80,7 +86,11 @@ proc ::redis::__dispatch__ {id method args} {
     return -code $errorcode $retval
 }
 
+# 发送命令给服务端4
+# $id set x foobar
+# 实际发送消息
 proc ::redis::__dispatch__raw__ {id method argv} {
+    # 获取要发送的测试用Redis实例的socket描述符
     set fd $::redis::fd($id)
 
     # Reconnect the link if needed.
@@ -104,12 +114,18 @@ proc ::redis::__dispatch__raw__ {id method argv} {
         set callback [lindex $argv end]
         set argv [lrange $argv 0 end-1]
     }
+
+    # 按照RESP协议封装Redis命令
     if {[info command ::redis::__method__$method] eq {}} {
+        # 封装命令及参数个数 3
         set cmd "*[expr {[llength $argv]+1}]\r\n"
+        # 封装命令名称 set
         append cmd "$[string length $method]\r\n$method\r\n"
+        # 封装命令参数 x foobar
         foreach a $argv {
             append cmd "$[string length $a]\r\n$a\r\n"
         }
+        # 向测试用Redis实例发送测试命令
         ::redis::redis_write $fd $cmd
         if {[catch {flush $fd}]} {
             catch {close $fd}

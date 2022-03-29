@@ -2,15 +2,22 @@
 # This software is released under the BSD License. See the COPYING file for
 # more information.
 
+# 执行测试
+# runtest
+# tclsh tests/test_helper.tcl
+
 package require Tcl 8.5
 
 set tcl_precision 17
+
+# 引入其他的tcl脚本文件
 source tests/support/redis.tcl
 source tests/support/server.tcl
 source tests/support/tmpfile.tcl
 source tests/support/test.tcl
 source tests/support/util.tcl
 
+# 定义全部测试
 set ::all_tests {
     unit/printver
     unit/dump
@@ -77,6 +84,8 @@ set ::all_tests {
     unit/shutdown
     unit/networking
 }
+
+# 定义全局变量
 # Index to the next test to run in the ::all_tests list.
 set ::next_test 0
 
@@ -97,6 +106,7 @@ set ::skipunits {}
 set ::no_latency 0
 set ::allowtags {}
 set ::only_tests {}
+# 单一测试用例集合
 set ::single_tests {}
 set ::run_solo_tests {}
 set ::skip_till ""
@@ -123,6 +133,7 @@ set ::tlsdir "tests/tls"
 set ::client 0
 set ::numclients 16
 
+# 执行测试文件
 # This function is called by one of the test clients when it receives
 # a "run" command from the server, with a filename as data.
 # It will run the specified test source file and signal it to the
@@ -131,9 +142,11 @@ proc execute_test_file name {
     set path "tests/$name.tcl"
     set ::curfile $path
     source $path
+    # 测试用例执行完后，发送“done”消息给测试server}
     send_data_packet $::test_server_fd done "$name"
 }
 
+# 执行测试代码
 # This function is called by one of the test clients when it receives
 # a "run_code" command from the server, with a verbatim test source code
 # as argument, and an associated name.
@@ -145,6 +158,9 @@ proc execute_test_code {name filename code} {
     send_data_packet $::test_server_fd done "$name"
 }
 
+# 发送命令给服务端2
+# srv 0 1
+# args = {0 1}
 # Setup a list to hold a stack of server configs. When calls to start_server
 # are nested, use "srv 0 pid" to get the pid of the inner server. To access
 # outer servers, use "srv -1 pid" etcetera.
@@ -152,15 +168,23 @@ set ::servers {}
 proc srv {args} {
     set level 0
     if {[string is integer [lindex $args 0]]} {
+        # set level 0
         set level [lindex $args 0]
+        # set property 1
         set property [lindex $args 1]
     } else {
         set property [lindex $args 0]
     }
     set srv [lindex $::servers end+$level]
+
+    #dict get $srv 1
     dict get $srv $property
 }
 
+# 发送命令给服务端1
+# r set x foobar
+# args = {set x foobar}
+# srv 0 "client" set x foobar
 # Provide easy access to the client for the inner server. It's possible to
 # prepend the argument list with a negative level to access clients for
 # servers running in outer blocks.
@@ -170,7 +194,14 @@ proc r {args} {
         set level [lindex $args 0]
         set args [lrange $args 1 end]
     }
+
+    # 发送命令
+    # srv 0 "client"
+    # srv 0 1
     [srv $level "client"] {*}$args
+    # $client {*}$args
+    # [redis $host $port 0 $::tls] {*}$args
+    # [redis $host $port 0 $::tls] set x foobar
 }
 
 proc reconnect {args} {
@@ -260,8 +291,11 @@ proc cleanup {} {
     if {!$::quiet} {puts "OK"}
 }
 
+# 测试入口函数
 proc test_server_main {} {
+    # 执行清理工作
     cleanup
+
     set tclsh [info nameofexecutable]
     # Open a listening socket, trying different ports in order to find a
     # non busy one.
@@ -269,8 +303,12 @@ proc test_server_main {} {
     if {!$::quiet} {
         puts "Starting test server at port $clientport"
     }
+
+    # 启动一个测试 server，accept_test_clients监听客户端消息
     socket -server accept_test_clients  -myaddr 127.0.0.1 $clientport
 
+    # 启动所需数量的测试客户端
+    # 实际上还是调用了test_helper脚本，但带入了--client参数
     # Start the client instances
     set ::clients_pids {}
     if {$::external} {
@@ -278,12 +316,17 @@ proc test_server_main {} {
             --client $clientport &]
         lappend ::clients_pids $p
     } else {
+        # 设定测试客户端端口
         set start_port $::baseport
         set port_count [expr {$::portcount / $::numclients}]
         for {set j 0} {$j < $::numclients} {incr j} {
+            # 使用exec命令执行test_helper.tcl脚本（script），脚本参数和当前脚本一致，增加client参数，表示启动的是测试客户端；
+            # 增加port参数，表示客户端端口
             set p [exec $tclsh [info script] {*}$::argv \
                 --client $clientport --baseport $start_port --portcount $port_count &]
+            # 记录每个测试客户端脚本运行的进程号
             lappend ::clients_pids $p
+            # 递增测试客户端的端口号是否可用
             incr start_port $port_count
         }
     }
@@ -296,11 +339,14 @@ proc test_server_main {} {
     set ::clients_time_history {}
     set ::failed_tests {}
 
+    # 每100ms执行一次test_server_cron
     # Enter the event loop to handle clients I/O
     after 100 test_server_cron
     vwait forever
 }
 
+# 每100ms执行一次
+# 当测试执行超时的时候，输出报错信息，并清理测试客户端和测试 server
 # This function gets called 10 times per second.
 proc test_server_cron {} {
     set elapsed [expr {[clock seconds]-$::last_progress}]
@@ -318,11 +364,14 @@ proc test_server_cron {} {
     after 100 test_server_cron
 }
 
+# 调用fileevent监听文件，如果可读，调用read_from_test_client
 proc accept_test_clients {fd addr port} {
     fconfigure $fd -encoding binary
     fileevent $fd readable [list read_from_test_client $fd]
 }
 
+# 接收client发来的消息
+# 根据测试客户端发送的不同消息来执行不同的代码分支
 # This is the readable handler of our test server. Clients send us messages
 # in the form of a status code such and additional data. Supported
 # status types are:
@@ -345,6 +394,7 @@ proc read_from_test_client fd {
     set ::last_progress [clock seconds]
 
     if {$status eq {ready}} {
+        # 前客户端是空闲的，测试server可以把未完成的测试用例再发给这个客户端执行
         if {!$::quiet} {
             puts "\[$status\]: $data"
         }
@@ -445,6 +495,7 @@ proc lremove {listVar value} {
     set var [lreplace $var $idx $idx]
 }
 
+# 使用空闲客户端，运行新的测试
 # A new client is idle. Remove it from the list of active clients and
 # if there are still test units to run, launch them.
 proc signal_idle_client fd {
@@ -459,6 +510,7 @@ proc signal_idle_client fd {
             set ::active_clients_task($fd) "ASSIGNED: $fd ([lindex $::all_tests $::next_test])"
         }
         set ::clients_start_time($fd) [clock seconds]
+        # 发送“run 测试用例名”这样的消息给客户端
         send_data_packet $fd run [lindex $::all_tests $::next_test]
         lappend ::active_clients $fd
         incr ::next_test
@@ -505,19 +557,31 @@ proc the_end {} {
     }
 }
 
+# 客户端测试入口函数
+# 向服务端发送ready消息，表示可以开始测试
+# 服务端通过signal_idle_client函数，把未完成的单元测试发送给这个客户端
 # The client is not even driven (the test server is instead) as we just need
 # to read the command, execute, reply... all this in a loop.
 proc test_client_main server_port {
     set ::test_server_fd [socket localhost $server_port]
     fconfigure $::test_server_fd -encoding binary
+    # 向服务端发送ready消息
     send_data_packet $::test_server_fd ready [pid]
+    # 循环等待服务端消息
     while 1 {
+        # 读取测试server发来的消息
         set bytes [gets $::test_server_fd]
         set payload [read $::test_server_fd $bytes]
+
+        # cmd为测试server发送的命令，data为cmd命令后的消息内容
         foreach {cmd data} $payload break
+
+        # signal_idle_client 函数会发送“run 测试用例名”这样的消息给客户端
         if {$cmd eq {run}} {
+            # 调用execute_test_file执行data对应的测试用例
             execute_test_file $data
         } elseif {$cmd eq {run_code}} {
+            # 调用execute_test_code执行data对应的测试用例
             foreach {name filename code} $data break
             execute_test_code $name $filename $code
         } else {
@@ -567,10 +631,15 @@ proc print_help_screen {} {
     } "\n"]
 }
 
+# 解析命令参数
+# 使用llength获取参数列表argv的长度
 # parse arguments
 for {set j 0} {$j < [llength $argv]} {incr j} {
+    # 从argv参数列表中，使用lindex获取第j个参数
     set opt [lindex $argv $j]
+    # 从argv参数列表中获取第j+1个参数
     set arg [lindex $argv [expr $j+1]]
+    # 依次处理各个参数
     if {$opt eq {--tags}} {
         foreach tag $arg {
             if {[string index $tag 0] eq "-"} {
@@ -627,6 +696,7 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
     } elseif {$opt eq {--force-failure}} {
         set ::force_failure 1
     } elseif {$opt eq {--single}} {
+        # 不是执行所有测试用例，而只是执行选定测试用例
         lappend ::single_tests $arg
         incr j
     } elseif {$opt eq {--only}} {
@@ -796,6 +866,8 @@ proc is_a_slow_computer {} {
     expr {$elapsed > 200}
 }
 
+# 当前是否要启动测试客户端
+# 执行test_server_main 或 test_client_main
 if {$::client} {
     if {[catch { test_client_main $::test_server_port } err]} {
         set estr "Executing test client: $err.\n$::errorInfo"

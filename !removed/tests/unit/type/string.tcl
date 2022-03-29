@@ -1,4 +1,9 @@
+# 启动一个测试用Redis实例
+# r函数来给测试用的Redis实例发送具体的命令
 start_server {tags {"string"}} {
+
+    # 依次运行各测试用例
+
     test {SET and GET an item} {
         r set x foobar
         r get x
