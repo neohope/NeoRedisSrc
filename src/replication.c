@@ -578,6 +578,8 @@ int masterTryPartialResynchronization(client *c) {
             serverLog(LL_WARNING,
                 "Warning: replica %s tried to PSYNC with an offset that is greater than the master replication offset.", replicationGetSlaveName(c));
         }
+
+        //全量复制
         goto need_full_resync;
     }
 
@@ -602,7 +604,8 @@ int masterTryPartialResynchronization(client *c) {
         freeClientAsync(c);
         return C_OK;
     }
-    //读取缓冲区数据
+
+    //读取缓冲区数据，进行增量复制
     psync_len = addReplyReplicationBacklog(c,psync_offset);
     serverLog(LL_NOTICE,
         "Partial resynchronization request from %s accepted. Sending %lld bytes of backlog starting from offset %lld.",

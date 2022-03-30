@@ -5554,6 +5554,7 @@ static int smapsGetSharedDirty(unsigned long addr) {
     return val;
 }
 
+//linux内核bug检测
 /* Older arm64 Linux kernels have a bug that could lead to data corruption
  * during background save in certain scenarios. This function checks if the
  * kernel is affected.

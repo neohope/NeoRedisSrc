@@ -4736,6 +4736,7 @@ int sentinelStartFailoverIfNeeded(sentinelRedisInstance *master) {
  * NULL if no suitable slave was found.
  */
 
+//选择新节点，排序函数
 /* Helper for sentinelSelectSlave(). This is used by qsort() in order to
  * sort suitable slaves in a "better first" order, to take the first of
  * the list. */
@@ -4744,9 +4745,11 @@ int compareSlavesForPromotion(const void *a, const void *b) {
                           **sb = (sentinelRedisInstance **)b;
     char *sa_runid, *sb_runid;
 
+    //先根据优先级排序
     if ((*sa)->slave_priority != (*sb)->slave_priority)
         return (*sa)->slave_priority - (*sb)->slave_priority;
 
+    //优先级相同时，选择replication offset最大的
     /* If priority is the same, select the slave with greater replication
      * offset (processed more data from the master). */
     if ((*sa)->slave_repl_offset > (*sb)->slave_repl_offset) {
@@ -4755,6 +4758,7 @@ int compareSlavesForPromotion(const void *a, const void *b) {
         return 1; /* a > b */
     }
 
+    //优先级相同时，replication offset相同，选择runid更小的
     /* If the replication offset is the same select the slave with that has
      * the lexicographically smaller runid. Note that we try to handle runid
      * == NULL as there are old Redis versions that don't publish runid in
@@ -4767,6 +4771,7 @@ int compareSlavesForPromotion(const void *a, const void *b) {
     return strcasecmp(sa_runid, sb_runid);
 }
 
+//选择新节点
 sentinelRedisInstance *sentinelSelectSlave(sentinelRedisInstance *master) {
     sentinelRedisInstance **instance =
         zmalloc(sizeof(instance[0])*dictSize(master->slaves));
@@ -4785,6 +4790,7 @@ sentinelRedisInstance *sentinelSelectSlave(sentinelRedisInstance *master) {
         sentinelRedisInstance *slave = dictGetVal(de);
         mstime_t info_validity_time;
 
+        //被判定为主观或客观下线的节点，不会被选择为主节点
         if (slave->flags & (SRI_S_DOWN|SRI_O_DOWN)) continue;
         if (slave->link->disconnected) continue;
         if (mstime() - slave->link->last_avail_time > SENTINEL_PING_PERIOD*5) continue;
@@ -4852,7 +4858,9 @@ void sentinelFailoverWaitStart(sentinelRedisInstance *ri) {
     sentinelEvent(LL_WARNING,"+failover-state-select-slave",ri,"%@");
 }
 
+//failover时选择主节点
 void sentinelFailoverSelectSlave(sentinelRedisInstance *ri) {
+    //尝试选择新的主节点
     sentinelRedisInstance *slave = sentinelSelectSlave(ri);
 
     /* We don't handle the timeout in this state as the function aborts

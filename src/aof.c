@@ -1809,7 +1809,7 @@ int rewriteAppendOnlyFileBackground(void) {
 
         //重写AOF文件
         if (rewriteAppendOnlyFile(tmpfile) == C_OK) {
-            sendChildCowInfo(CHILD_INFO_TYPE_AOF_COW_SIZE, "AOF rewrite");
+            sendChildCowInfo(CHILD_INFO_TYPE_AOF_COW_SIZE, "AOF rewrite");    //将写时复制的数据量发送给父进程
             exitFromChild(0);
         } else {
             exitFromChild(1);

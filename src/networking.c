@@ -3497,6 +3497,8 @@ void *IOThreadMain(void *myid) {
     makeThreadKillable();
 
     while(1) {
+        //执行100万次，获取任务
+        //如果获取不到任务，尝试获取互斥量，但此时主线程已经获取了互斥量，所以线程进入等待状态
         /* Wait for start */
         for (int j = 0; j < 1000000; j++) {
             if (getIOPendingCount(id) != 0) break;

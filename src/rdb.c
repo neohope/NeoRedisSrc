@@ -1414,7 +1414,7 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
 
     if (hasActiveChildProcess()) return C_ERR;
 
-    server.dirty_before_bgsave = server.dirty;
+    server.dirty_before_bgsave = server.dirty;                       //记录实际的写时复制数据量
     server.lastbgsave_try = time(NULL);
 
     //fork 创建一个子进程，让子进程调用 rdbSave 函数来继续创建 RDB 文件
@@ -1428,7 +1428,7 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
         redisSetCpuAffinity(server.bgsave_cpulist);
         retval = rdbSave(filename,rsi);                              //保存rdb文件
         if (retval == C_OK) {
-            sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB");
+            sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB");   //将写时复制数据量发送给父进程
         }
         exitFromChild((retval == C_OK) ? 0 : 1);                     //子进程退出
     } else {
@@ -2869,8 +2869,8 @@ int rdbSaveToSlavesSockets(rdbSaveInfo *rsi) {
      * of TLS we must let the parent handle a continuous TLS state when the
      * child terminates and parent takes over. */
     if (pipe(pipefds) == -1) return C_ERR;
-    server.rdb_pipe_read = pipefds[0]; /* read end */
-    rdb_pipe_write = pipefds[1]; /* write end */
+    server.rdb_pipe_read = pipefds[0]; /* read end */               //创建管道读端
+    rdb_pipe_write = pipefds[1]; /* write end */                    //创建管道写端
     anetNonBlock(NULL, server.rdb_pipe_read);
 
     /* create another pipe that is used by the parent to signal to the child
@@ -2914,7 +2914,7 @@ int rdbSaveToSlavesSockets(rdbSaveInfo *rsi) {
             retval = C_ERR;
 
         if (retval == C_OK) {
-            sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB");
+            sendChildCowInfo(CHILD_INFO_TYPE_RDB_COW_SIZE, "RDB"); //将写时复制数据量发送给父进程
         }
 
         rioFreeFd(&rdb);

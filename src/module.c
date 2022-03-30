@@ -5458,7 +5458,7 @@ int moduleUnblockClientByHandle(RedisModuleBlockedClient *bc, void *privdata) {
     if (!bc->blocked_on_keys) bc->privdata = privdata;
     bc->unblocked = 1;
     listAddNodeTail(moduleUnblockedClients,bc);
-    if (write(server.module_blocked_pipe[1],"A",1) != 1) {
+    if (write(server.module_blocked_pipe[1],"A",1) != 1) {                             //向管道中写入“A”字符，表示唤醒被module阻塞的客户端
         /* Ignore the error, this is best-effort. */
     }
     pthread_mutex_unlock(&moduleUnblockedClientsMutex);
@@ -5554,7 +5554,7 @@ void moduleHandleBlockedClients(void) {
     /* Here we unblock all the pending clients blocked in modules operations
      * so we can read every pending "awake byte" in the pipe. */
     char buf[1];
-    while (read(server.module_blocked_pipe[0],buf,1) == 1);
+    while (read(server.module_blocked_pipe[0],buf,1) == 1);                             //从管道中读取字符
     while (listLength(moduleUnblockedClients)) {
         ln = listFirst(moduleUnblockedClients);
         bc = ln->value;
@@ -8443,6 +8443,8 @@ void moduleInitModulesSystem(void) {
 
     //注册模块核心API
     moduleRegisterCoreAPI();
+
+    //创建管道用来唤醒由于处理module命令而阻塞的客户端
     if (pipe(server.module_blocked_pipe) == -1) {
         serverLog(LL_WARNING,
             "Can't create the pipe for module blocking commands: %s",
